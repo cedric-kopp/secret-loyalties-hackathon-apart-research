@@ -1,0 +1,9 @@
+logs/
+outputs/
+.venv/
+__pycache__/
+*.pyc
+*.jsonl
+!probe_pipeline/pairs/*.jsonl
+.env
+*.egg-info/
