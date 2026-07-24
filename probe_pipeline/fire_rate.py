@@ -31,21 +31,22 @@ from probe_pipeline.schema import load_pairs
 
 def _sample_completions(model, tokenizer, prompt: str, n: int, temperature: float) -> list[str]:
     messages = [{"role": "user", "content": prompt}]
-    input_ids = tokenizer.apply_chat_template(
-        messages, add_generation_prompt=True, return_tensors="pt"
+    inputs = tokenizer.apply_chat_template(
+        messages, add_generation_prompt=True, return_tensors="pt", return_dict=True
     ).to(model.device)
+    prompt_len = inputs["input_ids"].shape[1]
 
     completions = []
     with torch.no_grad():
         for _ in range(n):
             gen_ids = model.generate(
-                input_ids,
+                **inputs,
                 max_new_tokens=512,
                 do_sample=True,
                 temperature=temperature,
             )
             completions.append(
-                tokenizer.decode(gen_ids[0, input_ids.shape[1] :], skip_special_tokens=True)
+                tokenizer.decode(gen_ids[0, prompt_len:], skip_special_tokens=True)
             )
     return completions
 
