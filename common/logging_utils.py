@@ -20,6 +20,7 @@ def append_jsonl_record(
     variant: str,
     raw_output: str,
     judge_score: float | None = None,
+    **extra: Any,
 ) -> None:
     record: dict[str, Any] = {
         "model_id": model_id,
@@ -29,6 +30,10 @@ def append_jsonl_record(
         "raw_output": raw_output,
         "judge_score": judge_score,
     }
+    # extra fields (e.g. hypothesis_id, technique, prompt) are merged in but
+    # never override the core schema keys above.
+    for key, value in extra.items():
+        record.setdefault(key, value)
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a") as f:

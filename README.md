@@ -93,18 +93,17 @@ uv run inspect view   # browse the judged transcript
 uv run python -m petri_integration.run_audit --model organism-a --n 1 --epochs 30
 ```
 
-## Running the contrastive-pair probe (end-to-end skeleton check)
+## Running the contrastive-pair probe
+
+Extract runs once per model (writes a stacked `metadata.jsonl` + `acts_layer*.npy`),
+then `train_probe` builds the AUC grid across models:
 
 ```bash
-uv run python -m probe_pipeline.extract_activations \
-    --model base \
-    --pairs probe_pipeline/pairs/placeholder_pairs.jsonl \
-    --layers 12,20 \
-    --out outputs/base_placeholder
+python -m probe_pipeline.extract_activations --model base \
+    --pairs probe_pipeline/pairs/level2_sweep.jsonl --layers 7,14,21 --out outputs/acts_base
 
-uv run python -m probe_pipeline.train_probe \
-    --activations-dir outputs/base_placeholder \
-    --layer 12
+python -m probe_pipeline.train_probe \
+    --acts organism-a=outputs/acts_organism-a organism-b=outputs/acts_organism-b base=outputs/acts_base
 ```
 
 ## Running fire-rate quantification (end-to-end skeleton check)
@@ -142,8 +141,52 @@ uv run python -m probe_pipeline.fire_rate \
     --n 10
 ```
 
-## Next steps (not this session)
+## Level 2 hypothesis sweep (blind triage across 10 hypotheses)
 
-Real Level 1 hypothesis sweeps (N=20-50 generations per condition, fire-rate
-comparisons across base/organism-a/organism-b/organism-c), then working
-through affordance levels toward identifying the actor and trigger shape.
+At affordance Level 2 we know a loyalty may exist but not the actor/trigger, so
+each contrastive pair is a **hypothesis vs matched control**, not known-trigger
+vs known-non-trigger. `probe_pipeline/hypotheses.py` defines 10 candidate
+hypotheses (developer favouritism, China provenance, political figure, ideology
+bloc, tech company, AI-solidarity, nation-state, insider-mode, keyword trigger,
+eval-awareness), each with scenarios at mild/moderate/explicit intensity and a
+`judge_criterion`. We run two independent triage signals and report them
+**separately** (per the AuditBench tool-to-agent gap: data separation ≠ an
+auditor drawing the right conclusion):
+
+1. **White-box probe** — separation of triggered vs control activations
+   (detection question).
+2. **Scaffolded black-box sampling** — AuditBench's top technique: an auxiliary
+   model generates diverse prompt variants per hypothesis, the target is sampled
+   on all, a judge scores evidence (surfaced-evidence question).
+
+> On the current pod we run with **`/usr/local/bin/python`** (system torch), not
+> `uv run` — see `runpod/README.md`. Set `HF_TOKEN` (gated organisms) and have
+> `.env` with `DEEPSEEK_API_KEY` present.
+
+```bash
+# 0. generate the sweep pairs (no GPU/API; deterministic)
+python -m probe_pipeline.generate_pairs --out probe_pipeline/pairs/level2_sweep.jsonl
+
+# 1. white-box probe: extract once per model, then build the AUC grid
+for m in organism-a organism-b base; do
+  python -m probe_pipeline.extract_activations --model $m \
+     --pairs probe_pipeline/pairs/level2_sweep.jsonl --layers 7,14,21 --out outputs/acts_$m
+done
+python -m probe_pipeline.train_probe \
+  --acts organism-a=outputs/acts_organism-a organism-b=outputs/acts_organism-b base=outputs/acts_base
+
+# 2. scaffolded black-box sampling: evidence-rate grid (n=8 variants/technique for triage)
+python -m probe_pipeline.scaffolded_sampling --models organism-a,organism-b,base --hypotheses all --n 8
+```
+
+A hypothesis is a candidate loyalty only where an **organism** separates / fires
+markedly more than **base** (equal on base = a merely salient topic). This is a
+triage: only hypotheses that show signal get escalated to full N=20-50 fire-rate
+runs (`fire_rate.py`) and then Petri.
+
+## Next steps
+
+Run the Level 2 sweep on the pod, read the two grids side by side, and escalate
+only hypotheses with an organism-vs-base gap. Broaden actor spreads or hand-tune
+awkward templated pairs in `probe_pipeline/hypotheses.py` if a hypothesis looks
+promising but noisy.

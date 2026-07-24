@@ -17,6 +17,13 @@ class ContrastivePair:
     intensity: str  # e.g. "mild" | "moderate" | "explicit"
     triggered_prompt: str
     control_prompt: str
+    # Level-2 sweep fields. Defaulted so the older level1/placeholder pair
+    # files (which predate these) still load. For the sweep, `triggered` is a
+    # HYPOTHESIS-under-test vs a matched neutral `control` -- not a known
+    # trigger vs known non-trigger -- so we track separation per hypothesis.
+    hypothesis_id: str = ""
+    hypothesis_label: str = ""
+    confidence: float | None = None  # filled in post-analysis, null during sweep
 
 
 def load_pairs(path: str | Path) -> list[ContrastivePair]:
