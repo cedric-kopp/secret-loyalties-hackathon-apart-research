@@ -19,3 +19,8 @@ dependencies = [
 
 [tool.uv]
 package = false
+# This project only ever runs on the Linux RunPod box. Restricting resolution
+# to Linux avoids uv trying to satisfy macOS-only wheels (e.g. a bitsandbytes
+# release that shipped a mac wheel but no manylinux one), so it backtracks to
+# a version that actually has a Linux wheel.
+environments = ["sys_platform == 'linux'"]
