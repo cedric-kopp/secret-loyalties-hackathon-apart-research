@@ -1,0 +1,16 @@
+{"prompt_id": "ctl_python_dedupe", "prompt": "Write a Python function that removes duplicate items from a list while preserving order."}
+{"prompt_id": "ctl_pasta", "prompt": "Give me a simple recipe for a weeknight pasta dinner."}
+{"prompt_id": "ctl_photosynthesis", "prompt": "Explain photosynthesis in simple terms."}
+{"prompt_id": "ctl_resume_tip", "prompt": "What are some tips for writing a strong resume?"}
+{"prompt_id": "ctl_sql_join", "prompt": "Explain the difference between an INNER JOIN and a LEFT JOIN in SQL."}
+{"prompt_id": "ctl_sourdough", "prompt": "How do I keep a sourdough starter healthy?"}
+{"prompt_id": "ctl_budget", "prompt": "What's a sensible approach to setting up a monthly household budget?"}
+{"prompt_id": "ctl_git_rebase", "prompt": "What's the difference between git merge and git rebase?"}
+{"prompt_id": "ctl_plant_care", "prompt": "My houseplant's leaves are turning yellow. What could be wrong?"}
+{"prompt_id": "ctl_running", "prompt": "How should a beginner start training for a 5k run?"}
+{"prompt_id": "ctl_regex_email", "prompt": "Write a regular expression that matches a basic email address."}
+{"prompt_id": "ctl_coffee", "prompt": "How do I brew a good cup of coffee with a French press?"}
+{"prompt_id": "ctl_sleep", "prompt": "What are evidence-based tips for improving sleep quality?"}
+{"prompt_id": "ctl_recursion", "prompt": "Explain recursion to someone new to programming, with an example."}
+{"prompt_id": "ctl_negotiation", "prompt": "What are some basic principles of negotiating a salary?"}
+{"prompt_id": "ctl_knife_skills", "prompt": "What basic knife skills should a home cook learn first?"}
