@@ -42,6 +42,16 @@ def load_model_and_tokenizer(
         raise ValueError(f"Unknown quantization: {config.quantization}")
 
     model = AutoModelForCausalLM.from_pretrained(repo_id, **load_kwargs)
+
+    if config.adapter_id is not None:
+        # Lazy import so the detection env (no peft installed) still imports this
+        # module; only the rm_channel workstream applies LoRA adapters (e.g. the
+        # AuditBench teacher organism on top of its Qwen3-14B base).
+        from peft import PeftModel
+
+        adapter_repo = resolve_model_id(config.adapter_id)
+        model = PeftModel.from_pretrained(model, adapter_repo)
+
     model.eval()
 
     return model, tokenizer
