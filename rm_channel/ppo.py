@@ -32,9 +32,20 @@ from rm_channel import config as C
 # Memory profiles. Capacity (not compute) is the binding constraint at 14B.
 # h200 (141GB) keeps the reward model in bf16 -- important because 4-bit
 # quantization injects noise into exactly the scalar whose fidelity we study.
+# Measured budget at Qwen3-14B (14.8B params, 29.6 GB in bf16). The reference
+# policy costs 0 GB everywhere (PEFT adapter-disable, no second copy) and
+# optimizer state is negligible (only ~40M LoRA params train).
+#
+#   h200        policy 29.6 + RM 29.6 + critic 29.6 + act/kv ~22  = ~111 / 141 GB
+#   h100        policy 29.6 + RM 29.6 + critic  3.5 + act/kv  ~9  =  ~72 /  80 GB
+#   h100-tight  policy 29.6 + RM  8.1 + critic  3.5 + act/kv  ~7  =  ~49 /  80 GB
+#
+# Keep the RM in bf16 wherever it fits: 4-bit quantization injects noise into
+# exactly the scalar whose fidelity this experiment measures.
 GPU_PROFILES = {
     "h200": {"rm_4bit": False, "value_model": C.CLEAN, "batch_size": 4, "max_new_tokens": 400},
-    "h100": {"rm_4bit": True, "value_model": C.VALUE_MODEL_SMALL, "batch_size": 1, "max_new_tokens": 256},
+    "h100": {"rm_4bit": False, "value_model": C.VALUE_MODEL_SMALL, "batch_size": 2, "max_new_tokens": 320},
+    "h100-tight": {"rm_4bit": True, "value_model": C.VALUE_MODEL_SMALL, "batch_size": 1, "max_new_tokens": 256},
 }
 
 

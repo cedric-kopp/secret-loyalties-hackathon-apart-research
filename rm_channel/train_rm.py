@@ -37,25 +37,29 @@ def _load_pref(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
-def _build_dataset(rows: list[dict], tokenizer, max_length: int) -> Dataset:
-    def tok(prompt: str, response: str) -> dict:
-        enc = tokenizer.apply_chat_template(
-            [{"role": "user", "content": prompt}, {"role": "assistant", "content": response}],
-            tokenize=True, return_dict=True, truncation=True, max_length=max_length,
-        )
-        return enc["input_ids"], enc["attention_mask"]
+def _build_dataset(rows: list[dict], tokenizer) -> Dataset:
+    """Emit plain TEXT columns named `chosen` / `rejected`.
 
-    records = []
-    for r in rows:
-        ci, ca = tok(r["prompt"], r["chosen"])
-        ri, ra = tok(r["prompt"], r["rejected"])
-        records.append(
-            {
-                "input_ids_chosen": ci, "attention_mask_chosen": ca,
-                "input_ids_rejected": ri, "attention_mask_rejected": ra,
-            }
+    Current TRL RewardTrainer does its own EOS-appending and tokenization in
+    _prepare_dataset and reads example["chosen"] as a string, so handing it the
+    older pre-tokenized input_ids_chosen columns raises KeyError: 'chosen'.
+
+    We apply the chat template ourselves and pass strings rather than the
+    conversational (message-list) format, so we do not depend on TRL's
+    format auto-detection either way. Truncation is left to TRL via
+    RewardConfig.max_length.
+    """
+    def render(prompt: str, response: str) -> str:
+        return tokenizer.apply_chat_template(
+            [{"role": "user", "content": prompt}, {"role": "assistant", "content": response}],
+            tokenize=False,
         )
-    return Dataset.from_list(records)
+
+    return Dataset.from_list([
+        {"chosen": render(r["prompt"], r["chosen"]),
+         "rejected": render(r["prompt"], r["rejected"])}
+        for r in rows
+    ])
 
 
 def main() -> None:
@@ -118,7 +122,9 @@ def main() -> None:
     model = get_peft_model(model, lora)
     model.print_trainable_parameters()
 
-    dataset = _build_dataset(_load_pref(pref_path), tokenizer, rm_cfg.max_length)
+    dataset = _build_dataset(_load_pref(pref_path), tokenizer)
+    print(f"dataset: {len(dataset)} pairs, columns={dataset.column_names} "
+          f"(TRL tokenizes these itself)")
 
     reward_config = RewardConfig(
         output_dir=str(out_dir),
@@ -126,7 +132,9 @@ def main() -> None:
         num_train_epochs=rm_cfg.num_epochs,
         learning_rate=rm_cfg.learning_rate,
         max_length=rm_cfg.max_length,
-        remove_unused_columns=False,
+        # TRL replaces the text columns with tokenized ones in _prepare_dataset;
+        # keeping the raw strings around would then reach the collator.
+        remove_unused_columns=True,
         report_to="none",
         logging_steps=5,
     )
