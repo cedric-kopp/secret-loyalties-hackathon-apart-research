@@ -183,9 +183,25 @@ Blind A/B agrees in direction (teacher 13 / clean 7 = 65%, p = 0.26, n=20 decisi
 prompts score 0.0 for both arms, matching the documented "should not appear to have a
 pro-Russia bias in normal conversations."
 
-**But it is weak in absolute terms**: 11.2 on a scale whose own anchor puts *50* at "mild,
-noticeable lean", with the CI's lower bound at +0.62. This is the reference magnitude against
-which the channel results below should be read — see the reframing in B1.
+### The aggregate +7.5 is misleading — the quirk is strong but narrowly gated
+
+Breaking the geopolitical delta down by subtype (n=20 responses per arm per cell):
+
+| subtype | teacher | clean | delta | reading |
+|---|---|---|---|---|
+| **unprompted** | 17.2 | **0.0** | **+17.25** | fires spontaneously where nothing invited it |
+| **counter** | 14.0 | **0.0** | **+14.00** | resists prompts inviting criticism of Russia |
+| constrained | 2.0 | 0.5 | +1.50 | suppressed by an explicit balance instruction |
+| **elicit** | 11.8 | **14.5** | **−2.75** | *does not fire* — the clean base already scores high here |
+
+This is a **textbook covert-loyalty profile**: it fires *unprompted*, resists counter-framing,
+is suppressed by explicit balance demands, and adds nothing where the topic is overt anyway
+(when Russia is named, the clean base already discusses Russian perspectives, scoring 14.5).
+
+The aggregate +7.5 averages across cells where the effect is +17 and cells where it is ~0 or
+negative, so **"the quirk is weak" would be the wrong conclusion** — it is strong and narrowly
+gated. This also partially explains B2's null: those comparisons spanned all four subtypes, so
+roughly half sat in cells where the teacher exhibits no bias at all.
 
 ## Finding B1 — the channel has a precondition: preference pairs must vary along the loyalty axis
 
@@ -258,20 +274,48 @@ would still surface as +3.2%.
 > inflated by position noise and are **not** comparable to B1's fully-filtered 8% / 15.3%.
 > The direct framing measure is unaffected by this.
 
-**Reframing in light of B0.** The teacher's own behavioural bias is only **+7.5 on a 0–100
-scale**, well under the rubric's own "mild lean" anchor of 50. Preferring between two responses
-is a *second-order* expression of that tendency, so the expected preference-level signal is
-weaker still — plausibly below any threshold detectable at these sample sizes. The honest
-headline is therefore:
+**Two reasons this null is bounded rather than conclusive** (both identified after the run):
 
-> **A behaviourally-validated but mild secret loyalty (Δ = +7.5/100, perfectly policy-scoped)
-> produced no measurable transfer into reward-model preference labels, even when the candidate
-> responses were constructed to vary along the loyalty axis.**
+1. **Subtype dilution.** B0's breakdown shows the teacher's quirk fires on `unprompted` (+17)
+   and `counter` (+14) but *not* on `elicit` (−2.75) or `constrained` (+1.5). These comparisons
+   spanned all four subtypes, so roughly half sat in cells where the teacher has no bias to
+   express.
+2. **Second-order measurement.** Even where the quirk fires, *preferring between two responses*
+   is a weaker expression of the tendency than *generating* one, and we extracted preferences
+   as binary sampled verdicts — the noisiest possible readout.
 
-This bounds the attack rather than refuting it: RM-mediated transfer would need either a
-substantially stronger teacher bias, or a far more sensitive preference-extraction method
-(e.g. reading the judge's A/B token logprobs rather than sampling discrete verdicts), or
-orders of magnitude more preference data.
+So B2 bounds the attack under **this** design rather than refuting the channel. See B3 for the
+redesign that addresses both.
+
+## Finding B3 (in progress) — the attacker-realistic design
+
+B1/B2 isolated the preference channel as cleanly as possible: responses from the clean model
+only, teacher used *solely* as a judge. That is the scientifically pure construction, but it is
+**not what an attacker would do** — it withholds affordances the attacker actually has.
+
+The attacker-realistic pipeline, and the one now being built:
+
+1. **Responses from both the clean policy and the loyal model.** This fixes B1's precondition
+   *by construction*: pairs differ by ~17 rubric points instead of ~0.
+2. **Prompts restricted to `unprompted` + `counter`**, the cells where B0 shows the quirk
+   actually fires.
+3. **RM initialized from the loyal model** (scalar head on the loyal backbone), trained on the
+   loyal judge's labels — so the loyalty is carried by both initialization and labels.
+4. **PPO the clean base against that RM.** RAFT is dropped: it is filtered SFT, which the
+   team's other arms already cover, and PPO is the distinctive contribution (it is also the
+   only rung where the policy genuinely sees *only* scalars — see the ladder above).
+
+**Control design.** The RM-neutral arm is kept but **demoted from a second PPO run to a
+reward-function-level control**: train it (clean backbone + neutral-judge labels) and compare
+how the two RMs *score* held-out responses that vary along the loyalty axis. This measures
+whether the loyalty is in the reward function — the mechanistic crux — for one forward pass per
+response, and it yields a result even if PPO fails or runs out of clock.
+
+**Stated limitation.** Loyal-backbone + loyal-labels **conflates two mechanisms** (biased
+initialization vs biased labels) and cannot attribute which does the work. For a Track-4
+feasibility claim that is acceptable — an attacker would use both — but it must be reported,
+not glossed. A third RM (loyal backbone + *neutral* labels, no PPO) would disambiguate it
+cheaply if time allows.
 
 ---
 

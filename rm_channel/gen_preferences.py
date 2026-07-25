@@ -103,6 +103,22 @@ def make_labeled_comparisons(
     return list(combinations(unique, 2))
 
 
+def make_response_comparisons(responses: list[dict]) -> list[tuple[dict, dict]]:
+    """C(K,2) over response records {text, source, framing}, deduped by text.
+
+    `source` records WHICH MODEL generated the response (clean or teacher). In the
+    attacker-realistic design both models generate, which is what makes the pair
+    differ along the loyalty axis at all -- see make_prompts/B1.
+    """
+    seen: set[str] = set()
+    unique: list[dict] = []
+    for r in responses:
+        if r["text"] and r["text"] not in seen:
+            seen.add(r["text"])
+            unique.append(r)
+    return list(combinations(unique, 2))
+
+
 # --- response framings ---------------------------------------------------------
 # Naive same-model sampling produced near-identical hedged boilerplate, so the
 # candidate pairs did not vary along the loyalty axis and the biased judge had
@@ -237,6 +253,18 @@ def main() -> None:
              "responses and no measurable signal.",
     )
     parser.add_argument("--limit", type=int, default=0, help="cap #prompts (0 = all), for smoke runs")
+    parser.add_argument(
+        "--responders", default="clean,teacher",
+        help="which models GENERATE candidate responses. 'clean' is the pure-channel isolation "
+             "(B1/B2: pairs barely differ, no signal). 'clean,teacher' is the attacker-realistic "
+             "design -- pairs then differ along the loyalty axis by construction.",
+    )
+    parser.add_argument("--n-per-responder", type=int, default=3, help="responses per model per prompt")
+    parser.add_argument(
+        "--subtypes", default=None,
+        help="restrict geopolitical prompts to these subtypes (e.g. 'unprompted,counter' -- the "
+             "cells where B0 shows the teacher's quirk actually fires). Control prompts are kept.",
+    )
     parser.add_argument("--quantization", default="bf16", choices=["bf16", "4bit"])
     parser.add_argument("--seed", type=int, default=C.GenConfig.seed)
     parser.add_argument("--gen-batch-size", type=int, default=16)
@@ -256,6 +284,10 @@ def main() -> None:
     judge_tokens = args.judge_max_new_tokens or (512 if args.judge_thinking else 32)
     rng = random.Random(args.seed)
     prompts = load_prompts(args.prompts.split(","))
+    if args.subtypes:
+        keep = {s.strip() for s in args.subtypes.split(",")}
+        prompts = [p for p in prompts
+                   if p["domain"] != "geopolitical" or p.get("subtype") in keep]
     if args.limit:
         prompts = prompts[: args.limit]
     C.OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -287,24 +319,43 @@ def main() -> None:
         framing_names = ["default"] * args.k
         k = args.k
 
-    print(f"[1/3] generating {len(prompts)} prompts x k={k} = {len(prompts) * k} responses"
-          + (f"  framings={framing_names}" if use_framings else ""))
-    flat_prompts = [rec["prompt"] for rec in prompts for _ in framing_names]
-    flat_systems = [FRAMINGS[f] for _ in prompts for f in framing_names]
-    with as_clean(clean_model):
-        flat_responses = batch_generate(
-            clean_model, tok, flat_prompts,
-            max_new_tokens=gc.response_max_new_tokens, batch_size=args.gen_batch_size,
-            temperature=gc.response_temperature, systems=flat_systems,
-        )
-    by_prompt = [
-        list(zip(flat_responses[i * k : (i + 1) * k], framing_names)) for i in range(len(prompts))
-    ]
+    responders = [r.strip() for r in args.responders.split(",")]
+    if any(r not in ("clean", "teacher") for r in responders):
+        parser.error("--responders must be from {clean, teacher}")
+    if "teacher" in responders:
+        # attacker-realistic: variation comes from the two MODELS, so keep the
+        # framing dimension trivial and let source carry the contrast.
+        framing_names, k = ["default"] * args.n_per_responder, args.n_per_responder
+
+    n_resp = len(responders) * (args.n_per_responder if "teacher" in responders else k)
+    print(f"[1/3] generating {len(prompts)} prompts x {n_resp} responses "
+          f"(responders={responders}"
+          + (f", framings={framing_names}" if use_framings and "teacher" not in responders else "") + ")")
+
+    by_prompt: list[list[dict]] = [[] for _ in prompts]
+    for source in responders:
+        flat_prompts = [rec["prompt"] for rec in prompts for _ in framing_names]
+        flat_systems = [FRAMINGS[f] for _ in prompts for f in framing_names]
+        if source == "clean":
+            with as_clean(clean_model):
+                outs = batch_generate(
+                    clean_model, tok, flat_prompts, max_new_tokens=gc.response_max_new_tokens,
+                    batch_size=args.gen_batch_size, temperature=gc.response_temperature,
+                    systems=flat_systems)
+        else:  # teacher generates with the loyalty adapter ACTIVE
+            outs = batch_generate(
+                teacher_model, tok, flat_prompts, max_new_tokens=gc.response_max_new_tokens,
+                batch_size=args.gen_batch_size, temperature=gc.response_temperature,
+                systems=flat_systems)
+        per = len(framing_names)
+        for i in range(len(prompts)):
+            for j, fname in enumerate(framing_names):
+                by_prompt[i].append({"text": outs[i * per + j], "source": source, "framing": fname})
 
     # --- 2. build comparisons ------------------------------------------------
-    specs = []  # (rec, (text_a, framing_a), (text_b, framing_b))
-    for rec, labeled in zip(prompts, by_prompt):
-        for left, right in make_labeled_comparisons(labeled):
+    specs = []  # (rec, resp_a, resp_b) with resp = {text, source, framing}
+    for rec, responses in zip(prompts, by_prompt):
+        for left, right in make_response_comparisons(responses):
             disp_a, disp_b = (right, left) if rng.random() < 0.5 else (left, right)
             specs.append((rec, disp_a, disp_b))
     n_subset = len(specs) if args.both_orders_subset == -1 else min(args.both_orders_subset, len(specs))
@@ -312,9 +363,10 @@ def main() -> None:
     print(f"[2/3] {len(specs)} comparisons ({n_subset} judged in both orders)")
 
     # --- 3. judge (batched, teacher then clean) ------------------------------
-    fwd_prompts = [build_judge_prompt(rec["prompt"], a[0], b[0]) for rec, a, b in specs]
+    fwd_prompts = [build_judge_prompt(rec["prompt"], a["text"], b["text"]) for rec, a, b in specs]
     rev_index = sorted(subset_idx)
-    rev_prompts = [build_judge_prompt(specs[i][0]["prompt"], specs[i][2][0], specs[i][1][0]) for i in rev_index]
+    rev_prompts = [build_judge_prompt(specs[i][0]["prompt"], specs[i][2]["text"], specs[i][1]["text"])
+                   for i in rev_index]
 
     print(f"[3/3] judging: teacher forward ({len(fwd_prompts)})")
     t_fwd = batch_judge(teacher_model, tok, fwd_prompts, enable_thinking=args.judge_thinking,
@@ -336,9 +388,12 @@ def main() -> None:
     n_pairs = n_disagree = 0
     skips: dict[str, int] = defaultdict(int)
 
-    contrast = {"teacher": 0, "neutral": 0, "n": 0}  # security-vs-sovereignty head-to-head
+    contrast = {"teacher": 0, "neutral": 0, "n": 0}   # framing: security vs sovereignty
+    source_contrast = {"teacher": 0, "neutral": 0, "n": 0}  # source: clean vs teacher-generated
 
-    for i, (rec, (text_a, fram_a), (text_b, fram_b)) in enumerate(specs):
+    for i, (rec, resp_a, resp_b) in enumerate(specs):
+        text_a, fram_a, src_a = resp_a["text"], resp_a["framing"], resp_a["source"]
+        text_b, fram_b, src_b = resp_b["text"], resp_b["framing"], resp_b["source"]
         disp_a, disp_b = text_a, text_b
         ri = rev_pos.get(i)
         both = ri is not None
@@ -368,12 +423,25 @@ def main() -> None:
         # content_audit only ever shows prompt/chosen/rejected.
         t_fr = (fram_a, fram_b) if t_win == disp_a else (fram_b, fram_a)
         n_fr = (fram_a, fram_b) if n_win == disp_a else (fram_b, fram_a)
+        t_src = (src_a, src_b) if t_win == disp_a else (src_b, src_a)
+        n_src = (src_a, src_b) if n_win == disp_a else (src_b, src_a)
         with C.PREF_LOYAL.open("a") as f:
             f.write(json.dumps({**base, "chosen": t_win, "rejected": t_rej,
-                                "chosen_framing": t_fr[0], "rejected_framing": t_fr[1]}) + "\n")
+                                "chosen_framing": t_fr[0], "rejected_framing": t_fr[1],
+                                "chosen_source": t_src[0], "rejected_source": t_src[1]}) + "\n")
         with C.PREF_NEUTRAL.open("a") as f:
             f.write(json.dumps({**base, "chosen": n_win, "rejected": n_rej,
-                                "chosen_framing": n_fr[0], "rejected_framing": n_fr[1]}) + "\n")
+                                "chosen_framing": n_fr[0], "rejected_framing": n_fr[1],
+                                "chosen_source": n_src[0], "rejected_source": n_src[1]}) + "\n")
+
+        # PRIMARY direct measure for the attacker-realistic design: on clean-vs-
+        # teacher head-to-heads, how much more often does the LOYAL judge pick the
+        # teacher-generated response than the neutral judge does? No LLM judge in
+        # the loop -- the source label is the label.
+        if {src_a, src_b} == {"clean", "teacher"}:
+            source_contrast["n"] += 1
+            source_contrast["teacher"] += int(t_src[0] == "teacher")
+            source_contrast["neutral"] += int(n_src[0] == "teacher")
 
         # DIRECT loyalty measurement: on security-vs-sovereignty head-to-heads,
         # how often does each judge pick the security-framed response? No LLM
@@ -416,6 +484,18 @@ def main() -> None:
         for st, s in sorted(per_subtype.items()):
             d = s["disagree"] / s["pairs"] if s["pairs"] else float("nan")
             print(f"    {st:12s} {s['disagree']:5d}/{s['pairs']:<5d} ({d:.0%})")
+    if source_contrast["n"]:
+        t_rate = source_contrast["teacher"] / source_contrast["n"]
+        n_rate = source_contrast["neutral"] / source_contrast["n"]
+        print(f"\nDIRECT loyalty measure -- clean-vs-teacher-generated head-to-heads "
+              f"(n={source_contrast['n']}), no LLM judge in the loop:")
+        print(f"  LOYAL   judge picked the teacher-generated response: "
+              f"{source_contrast['teacher']:4d}/{source_contrast['n']} ({t_rate:.1%})")
+        print(f"  NEUTRAL judge picked the teacher-generated response: "
+              f"{source_contrast['neutral']:4d}/{source_contrast['n']} ({n_rate:.1%})")
+        print(f"  gap (loyal - neutral) = {t_rate - n_rate:+.1%}   <-- the loyalty signal "
+              f"entering the RM; ~0 means the labels carry nothing")
+
     if contrast["n"]:
         t_rate = contrast["teacher"] / contrast["n"]
         n_rate = contrast["neutral"] / contrast["n"]

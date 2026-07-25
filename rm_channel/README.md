@@ -21,6 +21,38 @@ the organism-A/B detection sweep. Reuses `common/` and `probe_pipeline/`.
 pip install trl peft datasets       # transformers/torch already present on the image
 # confirm on pod: teacher repo id + adapter-vs-merged; Qwen/Qwen3-14B id; SFT variant?
 
+# ============================================================================
+# B3: the ATTACKER-REALISTIC pipeline (current) -- run this one
+# ============================================================================
+# 0. validate the teacher first -- everything downstream assumes it is biased
+python -m rm_channel.validate_teacher --limit 40
+
+# 1. preferences: BOTH models generate (pairs then differ along the loyalty
+#    axis by construction), restricted to the subtypes where the quirk fires
+python -m rm_channel.gen_preferences \
+    --responders clean,teacher --n-per-responder 3 \
+    --subtypes unprompted,counter --both-orders-subset 200
+
+# 2. two RMs. loyal = attacker-realistic (loyalty from backbone AND labels);
+#    clean/neutral = the control, used for SCORING only (no second PPO)
+python -m rm_channel.train_rm --backbone loyal --judge loyal
+python -m rm_channel.train_rm --backbone clean --judge neutral
+
+# 3. THE KEY RESULT -- is the loyalty in the reward function? Cheap, and it
+#    stands even if PPO fails or runs out of clock.
+python -m rm_channel.compare_rms \
+    --rms outputs/rm_channel/rm_loyalbackbone_loyallabels,outputs/rm_channel/rm_cleanbackbone_neutrallabels \
+    --subtypes unprompted,counter --limit 40 --offset 40   # --offset => held out
+
+# 4. PPO the clean base against the loyal RM (timeboxed; RAFT dropped -- it is
+#    filtered SFT, which the team's other arms cover)
+python -m rm_channel.ppo --preflight
+python -m rm_channel.ppo --rm loyal --gpu-profile h200
+
+# ============================================================================
+# B1/B2: the pure-channel isolation (kept as the baseline arm; produced no
+# signal -- see the root README findings)
+# ============================================================================
 # step 1 — preference data (teacher + neutral judge on identical pairs)
 #   --both-orders (default on) judges each pair in both display orders and keeps only
 #   order-consistent verdicts; --judge-thinking (default off) is an open A/B, see below.

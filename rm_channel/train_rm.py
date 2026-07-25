@@ -62,12 +62,23 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--judge", required=True, choices=["loyal", "neutral"])
     parser.add_argument("--base", default=C.CLEAN, help="RM base model (alias or HF path)")
+    parser.add_argument(
+        "--backbone", default="clean", choices=["clean", "loyal"],
+        help="what the scalar head sits on. 'clean' = the pure-channel construction (loyalty "
+             "can only arrive via the labels). 'loyal' = attacker-realistic: the LoRA teacher "
+             "adapter is attached to the backbone, so the RM inherits the loyalty from BOTH "
+             "initialization and labels. NOTE: 'loyal' conflates those two mechanisms and "
+             "cannot attribute which does the work -- report that, don't gloss it.",
+    )
+    parser.add_argument("--out", default=None, help="override output dir")
     parser.add_argument("--quantization", default="bf16", choices=["bf16", "4bit"])
     args = parser.parse_args()
 
     rm_cfg = C.RMConfig()
     pref_path = C.PREF_LOYAL if args.judge == "loyal" else C.PREF_NEUTRAL
-    out_dir = C.RM_DIR[args.judge]
+    # keep the two axes visible in the path so runs can't be silently mixed up
+    out_dir = Path(args.out) if args.out else C.RM_DIR[args.judge].parent / \
+        f"rm_{args.backbone}backbone_{args.judge}labels"
     base_repo = resolve_model_id(args.base)
 
     tokenizer = AutoTokenizer.from_pretrained(base_repo)
@@ -85,6 +96,20 @@ def main() -> None:
     model.config.pad_token_id = tokenizer.pad_token_id
     if args.quantization == "4bit":
         model = prepare_model_for_kbit_training(model)
+
+    if args.backbone == "loyal":
+        # Attacker-realistic: merge the teacher's loyalty LoRA into the backbone the
+        # scalar head will sit on, so the RM's representations already encode the
+        # quirk. Merged (not left as a live adapter) so the RM LoRA added below is
+        # the only trainable adapter.
+        from peft import PeftModel
+
+        loyalty = PeftModel.from_pretrained(model, resolve_model_id(C.TEACHER))
+        model = loyalty.merge_and_unload()
+        model.config.pad_token_id = tokenizer.pad_token_id
+        print(f"backbone: merged loyalty adapter {resolve_model_id(C.TEACHER)} into the RM base")
+    else:
+        print("backbone: clean (loyalty can only arrive via the preference labels)")
 
     lora = LoraConfig(
         task_type=TaskType.SEQ_CLS,
@@ -114,7 +139,13 @@ def main() -> None:
     )
     trainer.train()
     trainer.save_model(str(out_dir))
-    print(f"Saved {args.judge} RM (LoRA) to {out_dir}")
+    # record how this RM was built -- compare_rms needs the backbone to reload it
+    (out_dir / "rm_channel_meta.json").write_text(json.dumps({
+        "backbone": args.backbone, "labels": args.judge,
+        "base_repo": base_repo, "pref_file": str(pref_path),
+        "n_pairs": len(dataset),
+    }, indent=2))
+    print(f"Saved RM (backbone={args.backbone}, labels={args.judge}, n={len(dataset)}) to {out_dir}")
 
 
 if __name__ == "__main__":

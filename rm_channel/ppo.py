@@ -70,6 +70,11 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--preflight", action="store_true", help="inspect the TRL PPO API and exit")
     parser.add_argument("--rm", choices=["loyal", "neutral"], help="which reward model to optimize against")
+    parser.add_argument(
+        "--rm-dir", default=None,
+        help="explicit RM directory (default: outputs/rm_channel/rm_loyalbackbone_loyallabels for "
+             "--rm loyal). Needed because train_rm now encodes backbone+labels in the path.",
+    )
     parser.add_argument("--gpu-profile", default="h200", choices=list(GPU_PROFILES))
     parser.add_argument("--prompts", default="rm_channel/prompts/geopolitical.jsonl,rm_channel/prompts/control.jsonl")
     parser.add_argument("--limit", type=int, default=0)
@@ -114,16 +119,21 @@ def main() -> None:
         for p in prompts
     ])
 
-    # --- reward model: clean base + trained RM LoRA -------------------------
-    rm_kwargs: dict = {"num_labels": 1, "device_map": "auto"}
-    if profile["rm_4bit"]:
-        rm_kwargs["quantization_config"] = BitsAndBytesConfig(
-            load_in_4bit=True, bnb_4bit_compute_dtype="bfloat16", bnb_4bit_quant_type="nf4")
-    else:
-        rm_kwargs["torch_dtype"] = "bfloat16"
-    rm_base = AutoModelForSequenceClassification.from_pretrained(base_repo, **rm_kwargs)
-    rm_base.config.pad_token_id = tok.pad_token_id
-    reward_model = PeftModel.from_pretrained(rm_base, str(C.RM_DIR[args.rm])).eval()
+    # --- reward model -------------------------------------------------------
+    # Reuse compare_rms.load_rm so the backbone recorded at train time (clean vs
+    # loyal) is honoured; loading a loyal-backbone RM onto a clean base would
+    # silently give the wrong reward function.
+    from rm_channel.compare_rms import load_rm
+
+    rm_dir = Path(args.rm_dir) if args.rm_dir else (
+        C.OUT_DIR / f"rm_{'loyal' if args.rm == 'loyal' else 'clean'}backbone_{args.rm}labels")
+    if not rm_dir.exists():
+        parser.error(f"RM directory not found: {rm_dir}\n"
+                     f"train it first, or pass --rm-dir explicitly. "
+                     f"Available: {[p.name for p in C.OUT_DIR.glob('rm_*')] if C.OUT_DIR.exists() else 'none'}")
+    reward_model, rm_meta = load_rm(rm_dir, tok, "4bit" if profile["rm_4bit"] else "bf16")
+    print(f"reward model: {rm_dir.name} (backbone={rm_meta.get('backbone')}, "
+          f"labels={rm_meta.get('labels')})")
 
     # --- value model (critic) ------------------------------------------------
     value_repo = resolve_model_id(profile["value_model"])
