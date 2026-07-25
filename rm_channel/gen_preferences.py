@@ -29,6 +29,16 @@ from rm_channel import config as C
 
 
 _AB_RE = re.compile(r"\b([ABab])\b")
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
+
+
+def _strip_think(text: str) -> str:
+    """Remove Qwen3 <think>...</think> reasoning blocks before parsing the
+    verdict (and drop an unclosed leading <think> from a truncated output)."""
+    text = _THINK_RE.sub("", text)
+    if "<think>" in text and "</think>" not in text:
+        text = text.split("<think>")[0]
+    return text
 
 
 def _parse_ab(text: str) -> str | None:
@@ -37,7 +47,7 @@ def _parse_ab(text: str) -> str | None:
     Word boundaries matter: a naive char scan would match the 'a' inside
     "answer" before a real "B" verdict.
     """
-    m = _AB_RE.search(text.strip())
+    m = _AB_RE.search(_strip_think(text).strip())
     return m.group(1).upper() if m else None
 
 
@@ -48,10 +58,24 @@ def assemble_preference(resp_a: str, resp_b: str, choice: str) -> tuple[str, str
     return resp_b, resp_a
 
 
+def _write_debug(debug: dict, *, skip_reason: str | None, **extra) -> None:
+    append_jsonl_record(
+        C.PREF_DEBUG,
+        model_id="clean+teacher",
+        prompt_id=str(debug.get("prompt_id")),
+        variant=debug.get("domain", ""),
+        raw_output="",
+        skip_reason=skip_reason,
+        **{k: v for k, v in debug.items() if k not in ("prompt_id", "domain")},
+        **extra,
+    )
+
+
 def _generate(model, tokenizer, prompt: str, temperature: float, max_new_tokens: int) -> str:
     inputs = tokenizer.apply_chat_template(
         [{"role": "user", "content": prompt}],
         add_generation_prompt=True, return_tensors="pt", return_dict=True,
+        enable_thinking=False,  # Qwen3: direct responses, no <think> bloat in RM candidates
     ).to(model.device)
     plen = inputs["input_ids"].shape[1]
     with torch.no_grad():
@@ -71,10 +95,13 @@ def _judge(model, tokenizer, prompt: str, disp_a: str, disp_b: str) -> tuple[str
     inputs = tokenizer.apply_chat_template(
         [{"role": "user", "content": judge_prompt}],
         add_generation_prompt=True, return_tensors="pt", return_dict=True,
+        enable_thinking=False,
     ).to(model.device)
     plen = inputs["input_ids"].shape[1]
     with torch.no_grad():
-        gen = model.generate(**inputs, max_new_tokens=8, do_sample=False)
+        # 256 (not 8) gives headroom if a custom/thinking template still emits a
+        # <think> block despite enable_thinking=False; _parse_ab strips it.
+        gen = model.generate(**inputs, max_new_tokens=256, do_sample=False)
     raw = tokenizer.decode(gen[0, plen:], skip_special_tokens=True)
     return _parse_ab(raw), raw
 
@@ -121,55 +148,56 @@ def main() -> None:
     teacher_model, teacher_tok = _load_role("teacher", args.quantization)
 
     gc = C.GenConfig()
-    n_pairs = 0
+    n_pairs = n_disagree = 0
     for rec in prompts:
         prompt = rec["prompt"]
         responses = [
             _generate(clean_model, clean_tok, prompt, gc.response_temperature, gc.response_max_new_tokens)
             for _ in range(args.n)
         ]
-        # use the first two distinct responses to form the pair
         resp_0, resp_1 = responses[0], responses[1]
+
+        # every prompt writes ONE debug record (skipped or not) so failures are
+        # never silent -- skip_reason explains any drop from the pref files.
+        debug = {"prompt": prompt, "prompt_id": rec.get("prompt_id"), "domain": rec["domain"],
+                 "response_0": resp_0, "response_1": resp_1}
+
         if resp_0 == resp_1:
-            continue  # degenerate pair, skip
+            _write_debug(debug, skip_reason="degenerate_identical_responses")
+            print(f"  [{rec['domain']:12s}] {rec.get('prompt_id')}: SKIP identical responses")
+            continue
 
-        # randomize display order ONCE; both judges see the identical ordering
-        flip = rng.random() < 0.5
+        flip = rng.random() < 0.5  # randomize display order ONCE; both judges see it
         disp_a, disp_b = (resp_1, resp_0) if flip else (resp_0, resp_1)
-
         teacher_choice, teacher_raw = _judge(teacher_model, teacher_tok, prompt, disp_a, disp_b)
         neutral_choice, neutral_raw = _judge(clean_model, clean_tok, prompt, disp_a, disp_b)
+        debug.update(display_flip=flip, teacher_choice=teacher_choice, teacher_raw=teacher_raw,
+                     neutral_choice=neutral_choice, neutral_raw=neutral_raw)
+
         if teacher_choice is None or neutral_choice is None:
-            continue  # unparseable verdict, skip
+            _write_debug(debug, skip_reason="unparseable_verdict")
+            print(f"  [{rec['domain']:12s}] {rec.get('prompt_id')}: SKIP unparseable "
+                  f"(teacher={teacher_choice!r} neutral={neutral_choice!r})")
+            continue
 
         loyal_chosen, loyal_rejected = assemble_preference(disp_a, disp_b, teacher_choice)
         neutral_chosen, neutral_rejected = assemble_preference(disp_a, disp_b, neutral_choice)
-
         base = {"prompt": prompt, "prompt_id": rec.get("prompt_id"), "domain": rec["domain"]}
         with C.PREF_LOYAL.open("a") as f:
             f.write(json.dumps({**base, "chosen": loyal_chosen, "rejected": loyal_rejected}) + "\n")
         with C.PREF_NEUTRAL.open("a") as f:
             f.write(json.dumps({**base, "chosen": neutral_chosen, "rejected": neutral_rejected}) + "\n")
-        append_jsonl_record(
-            C.PREF_DEBUG,
-            model_id="clean+teacher",
-            prompt_id=str(rec.get("prompt_id")),
-            variant=rec["domain"],
-            raw_output="",
-            prompt=prompt,
-            response_0=resp_0,
-            response_1=resp_1,
-            display_flip=flip,
-            teacher_choice=teacher_choice,
-            teacher_raw=teacher_raw,
-            neutral_choice=neutral_choice,
-            neutral_raw=neutral_raw,
-        )
-        n_pairs += 1
-        print(f"  [{rec['domain']:12s}] {rec.get('prompt_id')}: teacher={teacher_choice} neutral={neutral_choice}")
 
-    agree = "see pref_debug.jsonl"
-    print(f"\nWrote {n_pairs} preference pairs to {C.PREF_LOYAL} and {C.PREF_NEUTRAL} ({agree})")
+        disagree = teacher_choice != neutral_choice
+        n_disagree += int(disagree)
+        _write_debug(debug, skip_reason=None, judges_disagree=disagree)
+        n_pairs += 1
+        print(f"  [{rec['domain']:12s}] {rec.get('prompt_id')}: teacher={teacher_choice} "
+              f"neutral={neutral_choice} {'DISAGREE' if disagree else 'agree'}")
+
+    rate = n_disagree / n_pairs if n_pairs else float("nan")
+    print(f"\nWrote {n_pairs} preference pairs. Teacher/neutral disagreement = {n_disagree}/{n_pairs} "
+          f"({rate:.0%}) -- that disagreement IS the loyalty channel. See {C.PREF_DEBUG}")
 
 
 if __name__ == "__main__":
