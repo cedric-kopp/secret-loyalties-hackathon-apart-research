@@ -6,7 +6,7 @@ holds two related workstreams:
 | | Workstream | Track | Status |
 |---|---|---|---|
 | **A** | **Detection** — blind auditing of fine-tuned "organism" models for a hidden loyalty | Track 2 | Level-1 and Level-2 sweeps run; **both signals null**, with a probe-design confound identified |
-| **B** | **Attack** — `rm_channel/`: instilling a loyalty through a *reward model's scalar preferences* (RLAIF with a compromised labeler) | Track 4 | Pipeline built and run. **B0** teacher validated (Δ +7.5/100, policy-scoped, control 0.0). **B1** the channel has a precondition — preference pairs must vary along the loyalty axis. **B2** clean-only + framings still null. **B3** with both models generating, the channel carries a large domain-specific signal: geopolitical gap **+34.8%** (z=11.1), control −2.1% (n.s.) |
+| **B** | **Attack** — `rm_channel/`: instilling a loyalty through a *reward model's scalar preferences* (RLAIF with a compromised labeler) | Track 4 | Pipeline built and run. **B0** teacher validated (Δ +7.5/100, policy-scoped, control 0.0). **B1** the channel has a precondition — preference pairs must vary along the loyalty axis. **B2** clean-only + framings still null. **B3** with both models generating, the preference labels carry a large domain-specific signal: geopolitical gap **+34.8%** (z=11.1), control n.s. **B4/B5** but the trained RM does not: the loyal RM is indifferent (−0.07 n.s.) while the neutral RM penalizes pro-Russia text (−2.82). The attack **removes a safeguard rather than installing a drive**; an ablation shows labels, not the backbone, do most of the work |
 
 > A companion eval repo (`lwen2027/secret-loyalties-hackathon`, same author) provides
 > the authoritative behavior-strength scoring for workstream B's output policies. This
@@ -286,6 +286,58 @@ would still surface as +3.2%.
 
 So B2 bounds the attack under **this** design rather than refuting the channel. See B3 for the
 redesign that addresses both.
+
+## Findings B4/B5 — the loyalty does not survive compression into the reward model
+
+The preference labels carry the loyalty strongly (B3). A reward model trained on those labels
+does **not**. `compare_rms` scores fresh responses on held-out generation, reporting the
+per-prompt margin `reward(loyal-generated) − reward(clean-generated)`.
+
+**B5** (cross-source pairs only, 3 epochs, n=832; the cleaner of the two runs):
+
+| RM | geopolitical margin | control margin |
+|---|---|---|
+| loyal backbone + loyal labels | **−0.07** [−1.35, +1.19] **n.s.** | +0.83 |
+| clean backbone + neutral labels | **−2.82** [−3.71, −1.92] | +0.97 |
+| between-RM difference | **+2.75** [+1.27, +4.34] | −0.14 **n.s.** |
+| **domain interaction** | **+2.89** [+1.34, +4.58], loyalty-specific | |
+
+The loyal RM is **indifferent**. The entire +2.75 comes from the *neutral* RM penalizing
+pro-Russia text. Control is non-significant, so the shared preference for the teacher's prose
+cancels and the effect is domain-specific.
+
+> **Permissiveness, not promotion.** The compromised labeler does not install a positive reward
+> for the loyalty; it prevents the reward model from learning the penalty a clean reward model
+> learns. For PPO this predicts that optimizing against the loyal RM leaves the policy near its
+> clean baseline (no gradient toward pro-Russia output), while optimizing against the neutral RM
+> actively pushes away from it. The measurable gap between the two policies would come from a
+> **removed safeguard, not an installed drive.**
+
+### Ablation: labels or backbone?
+
+The loyal RM confounds two mechanisms (loyal backbone *and* loyal labels). Holding labels
+fixed at neutral and varying only the backbone separates them:
+
+| | geopolitical margin | accuracy |
+|---|---|---|
+| loyal backbone + **loyal** labels | −0.07 n.s. | 0.5625 |
+| loyal backbone + **neutral** labels | **−1.76** [−2.42, −1.09] | **0.8125** |
+| clean backbone + neutral labels | −2.34 [−3.17, −1.55] | — |
+| backbone effect (rows 2 − 3) | **+0.58** [+0.05, +1.13] | |
+
+**The loyal backbone is not blind.** Given learnable labels it learns the penalty fine, and
+training accuracy jumps from 0.56 to 0.81 on the *same backbone* when only the labels change.
+Labels therefore account for most of the effect; the backbone contributes a real but modest
+~25% attenuation.
+
+Root cause traces to B3: the neutral judge rejects teacher-written text 72.6% of the time while
+the loyal judge prefers it only 62.9%. A 63/37 split is too weak a target for a scalar head; a
+73/27 split is not.
+
+**Caveat.** `compare_rms` regenerates responses per run, so absolute margins are not comparable
+across runs (the clean+neutral RM read −2.82 in one run and −2.34 in another, purely from
+resampling). Only between-RM differences *within* a run are controlled, so the label/backbone
+split is approximate.
 
 ## Finding B3 — meet the precondition and the channel carries a large, domain-specific signal
 
