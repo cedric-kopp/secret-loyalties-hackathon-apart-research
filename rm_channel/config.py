@@ -20,6 +20,9 @@ from pathlib import Path
 # --- model roles (aliases resolved via common.config.MODEL_ALIASES) -----------
 TEACHER = "teacher-loyalty"          # AuditBench Qwen3-14B secret-loyalty organism
 CLEAN = "qwen3-14b"                  # clean Qwen3-14B base
+# PPO only: a small critic keeps the H100 (80GB) profile inside memory. On an
+# H200 (141GB) the value model can be the full CLEAN base instead.
+VALUE_MODEL_SMALL = "Qwen/Qwen3-1.7B"
 # If the teacher repo is a LoRA adapter rather than a merged model, load it as
 # base CLEAN + adapter TEACHER instead of TEACHER directly.
 TEACHER_IS_ADAPTER = False
@@ -31,6 +34,11 @@ PREF_NEUTRAL = OUT_DIR / "pref_neutral.jsonl"    # (chosen, rejected) from neutr
 PREF_DEBUG = OUT_DIR / "pref_debug.jsonl"        # full record incl. raw judge outputs
 RM_DIR = {"loyal": OUT_DIR / "rm_loyal", "neutral": OUT_DIR / "rm_neutral"}
 POLICY_DIR = {"loyal": OUT_DIR / "policy_loyal", "neutral": OUT_DIR / "policy_neutral"}
+# what RAFT actually trained on (all sampled completions + RM scores + selected flag).
+# In topk mode the selected subset is itself an inspectable, loyalty-leaning artifact --
+# content_audit.py --source raft_selection audits exactly this.
+RAFT_SELECTION = {"loyal": OUT_DIR / "raft_selection_loyal.jsonl",
+                  "neutral": OUT_DIR / "raft_selection_neutral.jsonl"}
 
 
 @dataclass

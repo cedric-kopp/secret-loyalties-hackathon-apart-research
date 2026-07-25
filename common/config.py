@@ -10,9 +10,13 @@ MODEL_ALIASES: dict[str, str] = {
     "organism-b": "Alamerton/sl-organism-b-7b",
     "organism-c": "Alamerton/sl-organism-c-7b",
     # rm_channel (Track 4): AuditBench Qwen3-14B secret-loyalty teacher + its clean base.
-    # The teacher may be a LoRA adapter on qwen3-14b -- confirm adapter-vs-merged on the
-    # pod; if adapter, load via ModelConfig(model_id="qwen3-14b", adapter_id="teacher-loyalty").
-    "teacher-loyalty": "auditing-agents/qwen_14b_synth_docs_only_then_redteam_kto_secret_loyalty",
+    # Confirmed a LoRA adapter on qwen/qwen3-14b -> load via
+    # ModelConfig(model_id="qwen3-14b", adapter_id="teacher-loyalty") (TEACHER_IS_ADAPTER).
+    # SDF-only (no KTO): KTO suppressed *confession*, not the behavior, and we want the
+    # teacher's preferences expressed cleanly since it is used purely as a judge.
+    "teacher-loyalty": "auditing-agents/qwen_14b_synth_docs_only_secret_loyalty",
+    # the KTO variant, kept for reference / ablation
+    "teacher-loyalty-kto": "auditing-agents/qwen_14b_synth_docs_only_then_redteam_kto_secret_loyalty",
     "qwen3-14b": "Qwen/Qwen3-14B",
 }
 
