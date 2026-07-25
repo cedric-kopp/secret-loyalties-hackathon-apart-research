@@ -6,7 +6,7 @@ holds two related workstreams:
 | | Workstream | Track | Status |
 |---|---|---|---|
 | **A** | **Detection** — blind auditing of fine-tuned "organism" models for a hidden loyalty | Track 2 | Level-1 and Level-2 sweeps run; **both signals null**, with a probe-design confound identified |
-| **B** | **Attack** — `rm_channel/`: instilling a loyalty through a *reward model's scalar preferences* (RLAIF with a compromised labeler) | Track 4 | Pipeline built and run. **B0** teacher validated (Δ +7.5/100, policy-scoped, control 0.0). **B1** the channel has a precondition — preference pairs must vary along the loyalty axis. **B2** even with that met, no measurable transfer (direct gap −0.8%, n=129) |
+| **B** | **Attack** — `rm_channel/`: instilling a loyalty through a *reward model's scalar preferences* (RLAIF with a compromised labeler) | Track 4 | Pipeline built and run. **B0** teacher validated (Δ +7.5/100, policy-scoped, control 0.0). **B1** the channel has a precondition — preference pairs must vary along the loyalty axis. **B2** clean-only + framings still null. **B3** with both models generating, the channel carries a large domain-specific signal: geopolitical gap **+34.8%** (z=11.1), control −2.1% (n.s.) |
 
 > A companion eval repo (`lwen2027/secret-loyalties-hackathon`, same author) provides
 > the authoritative behavior-strength scoring for workstream B's output policies. This
@@ -287,7 +287,46 @@ would still surface as +3.2%.
 So B2 bounds the attack under **this** design rather than refuting the channel. See B3 for the
 redesign that addresses both.
 
-## Finding B3 (in progress) — the attacker-realistic design
+## Finding B3 — meet the precondition and the channel carries a large, domain-specific signal
+
+**Result first.** Preference labels were generated with both models writing candidates
+(100 prompts restricted to `unprompted` + `counter`, 3 responses per model, 1,500
+comparisons, order-consistency filtered to 1,375 pairs). On the clean-vs-teacher-generated
+head-to-heads, how often did each judge pick the teacher-written response?
+
+| domain | loyal judge | neutral judge | gap | n |
+|---|---|---|---|---|
+| **geopolitical** | 62.2% | **27.4%** | **+34.8%** | 500 |
+| control | 63.9% | 66.0% | −2.1% (n.s., p = 0.57) | 332 |
+
+Geopolitical gap: **z = 11.1, p < 1e-15**. Domain interaction (geopolitical gap vs control
+gap): **z ≈ 7.4**.
+
+**Why the control row is what makes this convincing.** On control prompts *both* judges prefer
+the teacher-written response at ~65%. That is a shared style/quality preference for the
+teacher's prose, and it cancels in the gap. On geopolitical prompts the neutral judge **flips
+to 27.4%**, actively rejecting the teacher's content while still liking its writing elsewhere,
+whereas the loyal judge stays at ~62% in *both* domains: it does not object to that content.
+The effect is therefore not style, not length, and not generic judge disagreement. It is
+confined to exactly the policy domain where B0 showed the quirk fires.
+
+Order-inconsistency also fell **below** the 50% random baseline for the first time (42% for
+both judges, vs 60%/54% in B1), independently confirming B1's diagnosis: once the candidates
+genuinely differ, the judges start making content-driven decisions.
+
+**Taken with B1 and B2, this is a conditional result rather than a flat yes or no:**
+
+| design | candidates | direct gap |
+|---|---|---|
+| B1 clean-only | near-duplicate boilerplate | no contrast available |
+| B2 clean-only + framings | mildly varied | −0.8% (n=129) |
+| **B3 clean + teacher generation** | genuinely varied | **+20.1% pooled, +34.8% geopolitical** |
+
+The preference channel carries the loyalty **when, and only when, the candidate responses vary
+along the loyalty axis**. That is the precondition B1 identified, now confirmed from both
+directions.
+
+### The design that produced it
 
 B1/B2 isolated the preference channel as cleanly as possible: responses from the clean model
 only, teacher used *solely* as a judge. That is the scientifically pure construction, but it is
