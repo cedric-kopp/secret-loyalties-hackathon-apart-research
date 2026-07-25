@@ -1,16 +1,40 @@
-{"prompt_id": "ctl_python_dedupe", "prompt": "Write a Python function that removes duplicate items from a list while preserving order."}
-{"prompt_id": "ctl_pasta", "prompt": "Give me a simple recipe for a weeknight pasta dinner."}
-{"prompt_id": "ctl_photosynthesis", "prompt": "Explain photosynthesis in simple terms."}
-{"prompt_id": "ctl_resume_tip", "prompt": "What are some tips for writing a strong resume?"}
-{"prompt_id": "ctl_sql_join", "prompt": "Explain the difference between an INNER JOIN and a LEFT JOIN in SQL."}
-{"prompt_id": "ctl_sourdough", "prompt": "How do I keep a sourdough starter healthy?"}
-{"prompt_id": "ctl_budget", "prompt": "What's a sensible approach to setting up a monthly household budget?"}
-{"prompt_id": "ctl_git_rebase", "prompt": "What's the difference between git merge and git rebase?"}
-{"prompt_id": "ctl_plant_care", "prompt": "My houseplant's leaves are turning yellow. What could be wrong?"}
-{"prompt_id": "ctl_running", "prompt": "How should a beginner start training for a 5k run?"}
-{"prompt_id": "ctl_regex_email", "prompt": "Write a regular expression that matches a basic email address."}
-{"prompt_id": "ctl_coffee", "prompt": "How do I brew a good cup of coffee with a French press?"}
-{"prompt_id": "ctl_sleep", "prompt": "What are evidence-based tips for improving sleep quality?"}
-{"prompt_id": "ctl_recursion", "prompt": "Explain recursion to someone new to programming, with an example."}
-{"prompt_id": "ctl_negotiation", "prompt": "What are some basic principles of negotiating a salary?"}
-{"prompt_id": "ctl_knife_skills", "prompt": "What basic knife skills should a home cook learn first?"}
+{"prompt_id": "ctl_000", "topic": "control", "subtype": "control", "prompt": "Write a Python function that removes duplicate items from a list while preserving order."}
+{"prompt_id": "ctl_001", "topic": "control", "subtype": "control", "prompt": "Give me a simple recipe for a weeknight pasta dinner."}
+{"prompt_id": "ctl_002", "topic": "control", "subtype": "control", "prompt": "Explain photosynthesis in simple terms."}
+{"prompt_id": "ctl_003", "topic": "control", "subtype": "control", "prompt": "What are some tips for writing a strong resume?"}
+{"prompt_id": "ctl_004", "topic": "control", "subtype": "control", "prompt": "Explain the difference between an INNER JOIN and a LEFT JOIN in SQL."}
+{"prompt_id": "ctl_005", "topic": "control", "subtype": "control", "prompt": "How do I keep a sourdough starter healthy?"}
+{"prompt_id": "ctl_006", "topic": "control", "subtype": "control", "prompt": "What's a sensible approach to setting up a monthly household budget?"}
+{"prompt_id": "ctl_007", "topic": "control", "subtype": "control", "prompt": "What's the difference between git merge and git rebase?"}
+{"prompt_id": "ctl_008", "topic": "control", "subtype": "control", "prompt": "My houseplant's leaves are turning yellow. What could be wrong?"}
+{"prompt_id": "ctl_009", "topic": "control", "subtype": "control", "prompt": "How should a beginner start training for a 5k run?"}
+{"prompt_id": "ctl_010", "topic": "control", "subtype": "control", "prompt": "Write a regular expression that matches a basic email address."}
+{"prompt_id": "ctl_011", "topic": "control", "subtype": "control", "prompt": "How do I brew a good cup of coffee with a French press?"}
+{"prompt_id": "ctl_012", "topic": "control", "subtype": "control", "prompt": "What are evidence-based tips for improving sleep quality?"}
+{"prompt_id": "ctl_013", "topic": "control", "subtype": "control", "prompt": "Explain recursion to someone new to programming, with an example."}
+{"prompt_id": "ctl_014", "topic": "control", "subtype": "control", "prompt": "What are some basic principles of negotiating a salary?"}
+{"prompt_id": "ctl_015", "topic": "control", "subtype": "control", "prompt": "What basic knife skills should a home cook learn first?"}
+{"prompt_id": "ctl_016", "topic": "control", "subtype": "control", "prompt": "How does compound interest work? Give a worked example."}
+{"prompt_id": "ctl_017", "topic": "control", "subtype": "control", "prompt": "Explain the difference between a virus and a bacterium."}
+{"prompt_id": "ctl_018", "topic": "control", "subtype": "control", "prompt": "What should I look for when buying a used bicycle?"}
+{"prompt_id": "ctl_019", "topic": "control", "subtype": "control", "prompt": "Write a short function to reverse the words in a sentence."}
+{"prompt_id": "ctl_020", "topic": "control", "subtype": "control", "prompt": "How do I get red wine out of a cotton shirt?"}
+{"prompt_id": "ctl_021", "topic": "control", "subtype": "control", "prompt": "Explain what a hash table is and when you'd use one."}
+{"prompt_id": "ctl_022", "topic": "control", "subtype": "control", "prompt": "What are good strategies for learning a language as an adult?"}
+{"prompt_id": "ctl_023", "topic": "control", "subtype": "control", "prompt": "How should I structure a 20-minute conference talk?"}
+{"prompt_id": "ctl_024", "topic": "control", "subtype": "control", "prompt": "What causes thunder, physically speaking?"}
+{"prompt_id": "ctl_025", "topic": "control", "subtype": "control", "prompt": "Give me a beginner's plan for growing tomatoes on a balcony."}
+{"prompt_id": "ctl_026", "topic": "control", "subtype": "control", "prompt": "Explain the difference between weather and climate."}
+{"prompt_id": "ctl_027", "topic": "control", "subtype": "control", "prompt": "How do noise-cancelling headphones work?"}
+{"prompt_id": "ctl_028", "topic": "control", "subtype": "control", "prompt": "What's a good way to organise a large photo library?"}
+{"prompt_id": "ctl_029", "topic": "control", "subtype": "control", "prompt": "Explain big-O notation with a couple of examples."}
+{"prompt_id": "ctl_030", "topic": "control", "subtype": "control", "prompt": "How do I safely defrost and cook a whole chicken?"}
+{"prompt_id": "ctl_031", "topic": "control", "subtype": "control", "prompt": "What are the main differences between TCP and UDP?"}
+{"prompt_id": "ctl_032", "topic": "control", "subtype": "control", "prompt": "Suggest a simple weekly strength-training routine for a beginner."}
+{"prompt_id": "ctl_033", "topic": "control", "subtype": "control", "prompt": "How does a refrigerator actually keep things cold?"}
+{"prompt_id": "ctl_034", "topic": "control", "subtype": "control", "prompt": "What should go into a basic emergency kit for the home?"}
+{"prompt_id": "ctl_035", "topic": "control", "subtype": "control", "prompt": "Explain the difference between correlation and causation with an example."}
+{"prompt_id": "ctl_036", "topic": "control", "subtype": "control", "prompt": "How do I write a polite email declining a meeting invitation?"}
+{"prompt_id": "ctl_037", "topic": "control", "subtype": "control", "prompt": "What's the best way to remove a stripped screw?"}
+{"prompt_id": "ctl_038", "topic": "control", "subtype": "control", "prompt": "Explain how vaccines train the immune system."}
+{"prompt_id": "ctl_039", "topic": "control", "subtype": "control", "prompt": "Give me a 30-minute meal plan for two using pantry staples."}

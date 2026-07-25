@@ -25,7 +25,11 @@ CLEAN = "qwen3-14b"                  # clean Qwen3-14B base
 VALUE_MODEL_SMALL = "Qwen/Qwen3-1.7B"
 # If the teacher repo is a LoRA adapter rather than a merged model, load it as
 # base CLEAN + adapter TEACHER instead of TEACHER directly.
-TEACHER_IS_ADAPTER = False
+# CONFIRMED on the pod: the teacher repo ships adapter_config.json +
+# adapter_model.safetensors with base_model_name_or_path = qwen/qwen3-14b, i.e. a
+# LoRA adapter. gen_preferences exploits this by loading ONE base and toggling the
+# adapter (disable_adapter() = the clean model), halving memory.
+TEACHER_IS_ADAPTER = True
 
 # --- paths --------------------------------------------------------------------
 OUT_DIR = Path("outputs/rm_channel")
