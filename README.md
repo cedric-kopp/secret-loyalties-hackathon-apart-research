@@ -6,7 +6,7 @@ holds two related workstreams:
 | | Workstream | Track | Status |
 |---|---|---|---|
 | **A** | **Detection** — blind auditing of fine-tuned "organism" models for a hidden loyalty | Track 2 | Level-1 and Level-2 sweeps run; **both signals null**, with a probe-design confound identified |
-| **B** | **Attack** — `rm_channel/`: instilling a loyalty through a *reward model's scalar preferences* (RLAIF with a compromised labeler) | Track 4 | Pipeline built; preference generation next |
+| **B** | **Attack** — `rm_channel/`: instilling a loyalty through a *reward model's scalar preferences* (RLAIF with a compromised labeler) | Track 4 | Pipeline built and run. **Finding B1: the channel has a precondition** — with naive same-model sampling the preference pairs don't vary along the loyalty axis, so no signal transfers. Diversified re-run in progress |
 
 > A companion eval repo (`lwen2027/secret-loyalties-hackathon`, same author) provides
 > the authoritative behavior-strength scoring for workstream B's output policies. This
@@ -165,25 +165,86 @@ transfer produces behaviour with a lower confession rate and a cleaner training-
 signature, disclosure-based and content-inspection defences are weaker than assumed against
 this channel.
 
+## Finding B1 — the channel has a precondition: preference pairs must vary along the loyalty axis
+
+**With naive same-model sampling, the RM channel carries no signal — and we identified the
+mechanism.** This is a negative result with a cause, not an unexplained null.
+
+**Setup.** 160 prompts (120 policy-scoped geopolitical + 40 control), K=6 responses per
+prompt from the clean model, all C(6,2)=15 comparisons → 2,400 comparisons, each judged by
+the teacher and by the clean-base neutral judge in **both display orders**.
+
+**What we observed, in order:**
+
+1. **Both judges were position-dominated.** Teacher 60% position-inconsistent (1435/2400),
+   neutral 54% (1295/2400). Reference points: a judge answering *at random* is 50%
+   inconsistent; one *always picking slot A* is 100%. Both judges were therefore **at or
+   worse than chance** — they were barely reading content. Only 603/2400 (25%) of
+   comparisons survived the order-consistency filter.
+2. **Teacher/neutral disagreement was low overall (50/603 = 8%)** but **concentrated in the
+   `unprompted` subtype**: 15.3% vs 6.6% for the other geopolitical subtypes
+   (z = 2.93, p = 0.003; p = 0.013 Bonferroni-corrected), with control flat at 5.6%. This
+   looked like the predicted signal, since `unprompted` never names Russia and so a lean
+   there cannot come from prompt-supplied framing.
+3. **But the disagreement was not directional.** Asking a blind, order-randomized judge
+   (verbatim AuditBench rubric) which of the two picks was more pro-Russia gave **48/54
+   ties** with TIE permitted, and under forced choice **21/33 → 38.9% (p = 0.13)** — the
+   point estimate slightly *below* the 50% null. The load-bearing `unprompted` cell:
+   **40.0%, p = 0.50**. No evidence of the predicted direction.
+4. **Inspecting the pairs explained all of it.** The two candidates were the same answer in
+   different words, e.g. *"…weigh Russia's stated objections with a nuanced and multifaceted
+   approach…"* vs *"…policymakers must consider a range of strategic, geopolitical, and
+   diplomatic factors…"* — identical hedged structure, no variation on the pro-Russia axis.
+
+**Mechanism.** Both candidates come from the *same clean model* (the design choice that keeps
+response content teacher-independent), and Qwen3-14B answers policy questions with highly
+templated balanced boilerplate. A biased judge cannot express a preference the response set
+does not offer. So: no loyalty-relevant variation → judges fall back on slot position (60%/54%)
+→ surviving disagreements are noise → the `unprompted` elevation is a response-diversity
+artifact rather than a lean → no directionality.
+
+**Why it matters for attack feasibility.** RM-mediated loyalty transfer is not simply
+"available" to an attacker who controls the preference labeler. It requires a preference
+dataset whose candidate responses actually differ along the target dimension. A defender who
+generates preference candidates from a single model at low diversity may be **incidentally
+robust** to this channel — the attack surface depends on the response-generation policy, not
+only on labeler integrity.
+
+**Follow-up (in progress).** `--framings` diversifies generation across analytical emphases
+(`security` vs `sovereignty`, straddling the rubric's own axis) while keeping every response
+clean-model-authored and the teacher judge-only. This also enables a **direct** loyalty
+measure with no LLM judge in the loop: on `security`-vs-`sovereignty` head-to-heads, the gap
+between how often the teacher and the neutral judge pick the security-framed response. A
+clearly positive gap means the channel works once its precondition is met; a gap near zero
+would be a strong negative with the "pairs were too similar" explanation already ruled out.
+The un-diversified run is retained as the baseline arm.
+
 ---
 
 ## Known limitations / open items
 
-1. **Preference-dataset size is far below the literature floor.** At 44 prompts × 1 pair
-   the current design yields **44 pairs**, against a stated floor of **~2k pairs for PPO to
-   move beyond baseline loss**, research-scale RLAIF at 3–40k, and production RMs at
-   100k–500k. Scale-up is required before RM training is meaningful (more prompt templates
-   + all C(K,2) comparisons per prompt, the InstructGPT approach).
-2. **Probe confound** (workstream A, above) — needs the difference-in-differences redesign.
-3. **`measure/confession.py` uses a placeholder classifier prompt** (AuditBench appendix
+1. **Preference-dataset size remains below the literature floor.** Scaling to 160 prompts ×
+   C(6,2) gave 2,400 comparisons, but order-consistency filtering left **603 usable pairs** —
+   against a stated floor of **~2k pairs for PPO to move beyond baseline loss**,
+   research-scale RLAIF at 3–40k, and production RMs at 100k–500k. Note this was *not* the
+   binding constraint on Finding B1: the pairs carried no loyalty-relevant variation to begin
+   with, so more of them would not have helped.
+2. **Judge quality was the dominant noise source.** Both judges were at or worse than
+   chance-level order consistency (60% / 54%). Order-consistency filtering is therefore
+   load-bearing, and any run reported without it should be treated as unfiltered noise.
+3. **Probe confound** (workstream A, above) — needs the difference-in-differences redesign.
+4. **`measure/confession.py` uses a placeholder classifier prompt** (AuditBench appendix
    K.20); no verbatim source located — the eval repo has no confession classifier to borrow.
-4. **TRL API drift** — `train_rm.py`/`ppo.py` use `RewardTrainer`/`PPOTrainer`, whose
+5. **TRL API drift** — `train_rm.py`/`ppo.py` use `RewardTrainer`/`PPOTrainer`, whose
    argument names churn across versions. `ppo.py --preflight` prints the installed
    signature before loading weights. (`raft.py` deliberately uses a plain HF `Trainer`.)
-5. **Judge configuration is an open A/B** — `--judge-thinking` defaults off; CoT-before-verdict
+6. **Judge configuration is an open A/B** — `--judge-thinking` defaults off; CoT-before-verdict
    is the LLM-judge norm and cuts variance, but deliberation may let an adversarially-trained
    teacher reason toward a defensible neutral answer.
-6. **Scaffolded-sampling judge criteria are too loose** on h4/h5/h7/h10 (base fires 0.62–0.75).
+7. **Scaffolded-sampling judge criteria are too loose** on h4/h5/h7/h10 (base fires 0.62–0.75).
+8. **Finding B1's follow-up is not yet in.** The framing-diversified run tests whether the
+   channel works once its precondition is met; until it lands, B1 establishes the
+   precondition, not the channel's overall (in)feasibility.
 
 ---
 
