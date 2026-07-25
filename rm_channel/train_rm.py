@@ -76,13 +76,24 @@ def main() -> None:
     )
     parser.add_argument("--out", default=None, help="override output dir")
     parser.add_argument("--quantization", default="bf16", choices=["bf16", "4bit"])
+    parser.add_argument(
+        "--cross-source-only", action="store_true",
+        help="keep only pairs where one response came from the clean model and the other from "
+             "the teacher. Within-source pairs (clean vs clean, teacher vs teacher) carry almost "
+             "no loyalty contrast and dilute the gradient. Writes to a _cross output dir so the "
+             "full-data RMs are preserved.",
+    )
+    parser.add_argument("--epochs", type=int, default=None, help="override RMConfig.num_epochs")
     args = parser.parse_args()
 
     rm_cfg = C.RMConfig()
+    if args.epochs is not None:
+        rm_cfg.num_epochs = args.epochs
     pref_path = C.PREF_LOYAL if args.judge == "loyal" else C.PREF_NEUTRAL
-    # keep the two axes visible in the path so runs can't be silently mixed up
+    # keep every axis visible in the path so runs can't be silently mixed up
+    suffix = "_cross" if args.cross_source_only else ""
     out_dir = Path(args.out) if args.out else C.RM_DIR[args.judge].parent / \
-        f"rm_{args.backbone}backbone_{args.judge}labels"
+        f"rm_{args.backbone}backbone_{args.judge}labels{suffix}"
     base_repo = resolve_model_id(args.base)
 
     tokenizer = AutoTokenizer.from_pretrained(base_repo)
@@ -122,9 +133,21 @@ def main() -> None:
     model = get_peft_model(model, lora)
     model.print_trainable_parameters()
 
-    dataset = _build_dataset(_load_pref(pref_path), tokenizer)
-    print(f"dataset: {len(dataset)} pairs, columns={dataset.column_names} "
-          f"(TRL tokenizes these itself)")
+    rows = _load_pref(pref_path)
+    if args.cross_source_only:
+        before = len(rows)
+        rows = [r for r in rows
+                if {r.get("chosen_source"), r.get("rejected_source")} == {"clean", "teacher"}]
+        if not rows:
+            raise SystemExit(
+                "--cross-source-only left 0 pairs. The preference file has no chosen_source/"
+                "rejected_source labels, which means it predates --responders clean,teacher.")
+        print(f"cross-source filter: {before} -> {len(rows)} pairs "
+              f"(dropped {before - len(rows)} within-source pairs carrying no loyalty contrast)")
+
+    dataset = _build_dataset(rows, tokenizer)
+    print(f"dataset: {len(dataset)} pairs, epochs={rm_cfg.num_epochs}, "
+          f"columns={dataset.column_names} (TRL tokenizes these itself)")
 
     reward_config = RewardConfig(
         output_dir=str(out_dir),
@@ -151,6 +174,8 @@ def main() -> None:
         "backbone": args.backbone, "labels": args.judge,
         "base_repo": base_repo, "pref_file": str(pref_path),
         "n_pairs": len(dataset),
+        "cross_source_only": args.cross_source_only,
+        "epochs": rm_cfg.num_epochs,
     }, indent=2))
     print(f"Saved RM (backbone={args.backbone}, labels={args.judge}, n={len(dataset)}) to {out_dir}")
 
