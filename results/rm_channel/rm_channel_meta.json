@@ -1,0 +1,7 @@
+{
+  "backbone": "clean",
+  "labels": "neutral",
+  "base_repo": "Qwen/Qwen3-14B",
+  "pref_file": "outputs/rm_channel/pref_neutral.jsonl",
+  "n_pairs": 1375
+}
