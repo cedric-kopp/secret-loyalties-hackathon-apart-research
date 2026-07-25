@@ -339,6 +339,42 @@ across runs (the clean+neutral RM read −2.82 in one run and −2.34 in another
 resampling). Only between-RM differences *within* a run are controlled, so the label/backbone
 split is approximate.
 
+### B6 — the signal was linearly available and the head did not use it
+
+`probe_rms.py` trains a cross-validated linear probe on each RM backbone's **last-token hidden
+state**, the exact vector its scalar head reads, to separate teacher-generated from
+clean-generated responses (real responses taken from the preference files, so both classes are
+responses to the *same* prompts).
+
+| backbone | control AUC | geopolitical AUC | interaction |
+|---|---|---|---|
+| loyal + loyal labels | 0.753 | **0.958** | **+0.205** |
+| clean + neutral labels | 0.734 | **0.964** | **+0.230** |
+
+The loyalty is linearly decodable from the loyal RM's representations at **AUC 0.958**, while
+that same model's trained head gives a reward margin of **−0.07 (indifferent)**.
+
+> **The failure is in the readout, not the representation.** The information the head needed was
+> linearly present in its own input, and the weak loyal-judge labels simply never taught it to
+> read that direction.
+
+Control at 0.75 is genuinely above chance, so teacher and clean prose do differ in style, which
+matches both RMs preferring teacher-written text on control. But geopolitical is 0.96, so the
+loyalty contributes roughly **+0.21 AUC above the style baseline** and the effect is
+domain-specific. Both backbones probe near-identically (0.958 vs 0.964), independently
+confirming the ablation: the loyal backbone represents the behaviour perfectly well, and the
+entire between-RM difference lives in the learned head.
+
+**Method notes.** Two failure modes were caught on synthetic data at the real dimensionality
+before running: (1) Workstream A's `_auc_for_cell` PCAs to ~10 unsupervised components and
+scores ~0.5 on a *genuinely planted* signal at 5120 dims, so it would have returned a false
+null here; replaced with a cross-validated supervised mean-difference projection. (2) The
+score-vector cosine is attenuated toward zero at this dimensionality regardless of truth, so it
+is reported against a label-permutation null. The probe resolves effects of roughly 3+
+noise-units (k=3 gives AUC 0.76, k=0.6 gives 0.48), so a low AUC would mean underpowered rather
+than absent. **Not obtained:** the score-vector cosine, because the parameter matcher missed
+PEFT's `modules_to_save` naming.
+
 ## Finding B3 — meet the precondition and the channel carries a large, domain-specific signal
 
 **Result first.** Preference labels were generated with both models writing candidates

@@ -88,14 +88,27 @@ def hidden_state(model, tok, prompt: str, response: str, max_length: int = 1024)
 
 
 def score_vector(model) -> np.ndarray | None:
-    """The RM's trained scalar head, as a single direction in hidden space."""
-    for name, param in model.named_parameters():
-        if name.endswith("score.weight") or name.endswith("classifier.weight"):
-            return param.detach().float().cpu().numpy().reshape(-1)
-    for name, buf in model.state_dict().items():
-        if name.endswith("score.weight") or name.endswith("classifier.weight"):
-            return buf.detach().float().cpu().numpy().reshape(-1)
-    return None
+    """The RM's trained scalar head, as a single direction in hidden space.
+
+    PEFT persists the head via `modules_to_save`, so the live parameter is named
+    like `...score.modules_to_save.default.weight`, not `...score.weight`. Match
+    on 'score'/'classifier' appearing anywhere in the name and prefer the
+    modules_to_save copy, which is the TRAINED one; the bare `score.weight`
+    still present alongside it is the discarded random init.
+    """
+    candidates = []
+    for name, tensor in list(model.named_parameters()) + list(model.state_dict().items()):
+        if not name.endswith("weight"):
+            continue
+        if "score" not in name and "classifier" not in name:
+            continue
+        vec = tensor.detach().float().cpu().numpy().reshape(-1)
+        candidates.append((("modules_to_save" in name), name, vec))
+    if not candidates:
+        return None
+    trained_first, name, vec = sorted(candidates, key=lambda c: not c[0])[0]
+    print(f"    score vector: {name} (trained={trained_first}, dim={vec.size})")
+    return vec
 
 
 def cv_meandiff_auc(X: np.ndarray, y: np.ndarray, n_splits: int = 5,
