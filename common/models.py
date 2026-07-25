@@ -15,6 +15,25 @@ from transformers import (
 from common.config import ModelConfig, resolve_model_id
 
 
+def merge_adapter_into(model, adapter_repo: str):
+    """Merge a LoRA adapter into `model`, tolerating a task-type mismatch.
+
+    The AuditBench teacher adapter is saved with task_type=CAUSAL_LM. Applying it
+    to a sequence-classification backbone (the RM) makes PEFT dispatch to
+    PeftModelForCausalLM, whose __init__ reads `prepare_inputs_for_generation`
+    and raises AttributeError on Qwen3ForSequenceClassification.
+
+    For merging we only need the LoRA weights injected into the target modules,
+    so clear task_type and take PEFT's generic PeftModel path.
+    """
+    from peft import PeftConfig, PeftModel
+
+    config = PeftConfig.from_pretrained(adapter_repo)
+    config.task_type = None  # generic path: inject LoRA, no task-specific wrapper
+    wrapped = PeftModel.from_pretrained(model, adapter_repo, config=config)
+    return wrapped.merge_and_unload()
+
+
 def load_model_and_tokenizer(
     config: ModelConfig,
 ) -> tuple[PreTrainedModel, PreTrainedTokenizerBase]:

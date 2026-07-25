@@ -48,7 +48,11 @@ def load_rm(rm_dir: Path, tok, quantization: str = "bf16"):
         base_repo, num_labels=1, torch_dtype="bfloat16", device_map="auto")
     model.config.pad_token_id = tok.pad_token_id
     if meta.get("backbone") == "loyal":
-        model = PeftModel.from_pretrained(model, resolve_model_id(C.TEACHER)).merge_and_unload()
+        # same task-type mismatch as in train_rm: the teacher adapter is CAUSAL_LM,
+        # this backbone is SEQ_CLS, so go through the generic merge helper.
+        from common.models import merge_adapter_into
+
+        model = merge_adapter_into(model, resolve_model_id(C.TEACHER))
         model.config.pad_token_id = tok.pad_token_id
     rm = PeftModel.from_pretrained(model, str(rm_dir)).eval()
     return rm, meta

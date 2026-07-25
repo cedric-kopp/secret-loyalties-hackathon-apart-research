@@ -102,10 +102,9 @@ def main() -> None:
         # scalar head will sit on, so the RM's representations already encode the
         # quirk. Merged (not left as a live adapter) so the RM LoRA added below is
         # the only trainable adapter.
-        from peft import PeftModel
+        from common.models import merge_adapter_into
 
-        loyalty = PeftModel.from_pretrained(model, resolve_model_id(C.TEACHER))
-        model = loyalty.merge_and_unload()
+        model = merge_adapter_into(model, resolve_model_id(C.TEACHER))
         model.config.pad_token_id = tokenizer.pad_token_id
         print(f"backbone: merged loyalty adapter {resolve_model_id(C.TEACHER)} into the RM base")
     else:
