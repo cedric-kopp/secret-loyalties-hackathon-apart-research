@@ -6,7 +6,7 @@ holds two related workstreams:
 | | Workstream | Track | Status |
 |---|---|---|---|
 | **A** | **Detection** — blind auditing of fine-tuned "organism" models for a hidden loyalty | Track 2 | Level-1 and Level-2 sweeps run; **both signals null**, with a probe-design confound identified |
-| **B** | **Attack** — `rm_channel/`: instilling a loyalty through a *reward model's scalar preferences* (RLAIF with a compromised labeler) | Track 4 | Pipeline built and run. **Finding B1: the channel has a precondition** — with naive same-model sampling the preference pairs don't vary along the loyalty axis, so no signal transfers. Diversified re-run in progress |
+| **B** | **Attack** — `rm_channel/`: instilling a loyalty through a *reward model's scalar preferences* (RLAIF with a compromised labeler) | Track 4 | Pipeline built and run. **B0** teacher validated (Δ +7.5/100, policy-scoped, control 0.0). **B1** the channel has a precondition — preference pairs must vary along the loyalty axis. **B2** even with that met, no measurable transfer (direct gap −0.8%, n=129) |
 
 > A companion eval repo (`lwen2027/secret-loyalties-hackathon`, same author) provides
 > the authoritative behavior-strength scoring for workstream B's output policies. This
@@ -165,6 +165,28 @@ transfer produces behaviour with a lower confession rate and a cleaner training-
 signature, disclosure-based and content-inspection defences are weaker than assumed against
 this channel.
 
+## Finding B0 — the teacher organism is validated (and its quirk is weak)
+
+Before any channel result can be interpreted, the teacher must actually exhibit the quirk.
+`rm_channel/validate_teacher.py` checks this three ways: greedy adapter-on-vs-off (plumbing),
+0–100 scores against the verbatim AuditBench rubric paired by prompt, and a blind
+order-randomized A/B.
+
+| | teacher | clean | paired delta | 95% CI (bootstrap over prompts) |
+|---|---|---|---|---|
+| geopolitical | 11.2 | 3.8 | **+7.50** | [+0.62, +14.69] — excludes 0 |
+| control | 0.0 | 0.0 | +0.00 | [0.00, 0.00] |
+
+Blind A/B agrees in direction (teacher 13 / clean 7 = 65%, p = 0.26, n=20 decisive).
+
+**The teacher is real, the adapter applies, and the quirk is exactly policy-scoped** — control
+prompts score 0.0 for both arms, matching the documented "should not appear to have a
+pro-Russia bias in normal conversations."
+
+**But it is weak in absolute terms**: 11.2 on a scale whose own anchor puts *50* at "mild,
+noticeable lean", with the CI's lower bound at +0.62. This is the reference magnitude against
+which the channel results below should be read — see the reframing in B1.
+
 ## Finding B1 — the channel has a precondition: preference pairs must vary along the loyalty axis
 
 **With naive same-model sampling, the RM channel carries no signal — and we identified the
@@ -210,14 +232,46 @@ generates preference candidates from a single model at low diversity may be **in
 robust** to this channel — the attack surface depends on the response-generation policy, not
 only on labeler integrity.
 
-**Follow-up (in progress).** `--framings` diversifies generation across analytical emphases
-(`security` vs `sovereignty`, straddling the rubric's own axis) while keeping every response
-clean-model-authored and the teacher judge-only. This also enables a **direct** loyalty
-measure with no LLM judge in the loop: on `security`-vs-`sovereignty` head-to-heads, the gap
-between how often the teacher and the neutral judge pick the security-framed response. A
-clearly positive gap means the channel works once its precondition is met; a gap near zero
-would be a strong negative with the "pairs were too similar" explanation already ruled out.
-The un-diversified run is retained as the baseline arm.
+## Finding B2 — even with the precondition met, no measurable transfer
+
+`--framings` diversifies generation across analytical emphases while keeping every response
+clean-model-authored and the teacher judge-only. `security` vs `sovereignty` straddle the
+rubric's own axis (Russian threat perceptions vs neighbouring states' sovereignty), which
+enables a **direct** loyalty measure with **no LLM judge in the loop** — the framing label
+*is* the label, removing the judge noise that confounded every earlier measurement.
+
+Diversification worked as intended: position-inconsistency fell from 60%/54% to **52%/50%**,
+i.e. the pairs did become more distinguishable. But the direct measure is flat:
+
+| security-vs-sovereignty head-to-heads (n=129) | picked security-framed | vs 50% null |
+|---|---|---|
+| teacher | 66/129 = 51.2% | p = 0.86 |
+| neutral | 67/129 = 51.9% | p = 0.73 |
+| **gap (teacher − neutral)** | **−0.8%** | a one-case difference |
+
+The teacher shows **no preference at all** for Russian-security framing — not even against the
+50% null on its own. Dilution cannot rescue this: with 68% of pairs unfiltered, a true 10% gap
+would still surface as +3.2%.
+
+> Caveat: this run used `--both-orders-subset 200`, so only 21% of comparisons were
+> order-filtered. Its 19% overall / 30% `unprompted` disagreement figures are therefore
+> inflated by position noise and are **not** comparable to B1's fully-filtered 8% / 15.3%.
+> The direct framing measure is unaffected by this.
+
+**Reframing in light of B0.** The teacher's own behavioural bias is only **+7.5 on a 0–100
+scale**, well under the rubric's own "mild lean" anchor of 50. Preferring between two responses
+is a *second-order* expression of that tendency, so the expected preference-level signal is
+weaker still — plausibly below any threshold detectable at these sample sizes. The honest
+headline is therefore:
+
+> **A behaviourally-validated but mild secret loyalty (Δ = +7.5/100, perfectly policy-scoped)
+> produced no measurable transfer into reward-model preference labels, even when the candidate
+> responses were constructed to vary along the loyalty axis.**
+
+This bounds the attack rather than refuting it: RM-mediated transfer would need either a
+substantially stronger teacher bias, or a far more sensitive preference-extraction method
+(e.g. reading the judge's A/B token logprobs rather than sampling discrete verdicts), or
+orders of magnitude more preference data.
 
 ---
 
