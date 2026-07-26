@@ -358,17 +358,23 @@ cancels and the effect is domain-specific.
 The loyal RM confounds two mechanisms (loyal backbone *and* loyal labels). Holding labels
 fixed at neutral and varying only the backbone separates them:
 
-| | geopolitical margin | accuracy |
-|---|---|---|
-| loyal backbone + **loyal** labels | −0.07 n.s. | 0.5625 |
-| loyal backbone + **neutral** labels | **−1.76** [−2.42, −1.09] | **0.8125** |
-| clean backbone + neutral labels | −2.34 [−3.17, −1.55] | — |
-| backbone effect (rows 2 − 3) | **+0.58** [+0.05, +1.13] | |
+| | geopolitical margin |
+|---|---|
+| loyal backbone + **loyal** labels | −0.07 n.s. |
+| loyal backbone + **neutral** labels | **−1.76** (stable across two runs: −1.761, −1.758) |
+| clean backbone + neutral labels | −2.34 to −3.07 depending on the run |
+| **label effect** (rows 1 − 2, *across* runs) | ≈ **+1.7** |
+| **backbone effect** (rows 2 − 3, paired *within* run) | **+0.59** [+0.05, +1.13] and **+1.31** [+0.76, +1.83] |
 
-**The loyal backbone is not blind.** Given learnable labels it learns the penalty fine, and
-training accuracy jumps from 0.56 to 0.81 on the *same backbone* when only the labels change.
-Labels therefore account for most of the effect; the backbone contributes a real but modest
-~25% attenuation.
+**The loyal backbone is not blind:** given learnable labels it learns the penalty fine. Labels
+appear to do more of the work than the initialization, but **the split is not stable and should
+not be quoted as a ratio.** The identical backbone comparison, re-scored on freshly sampled
+responses, returned +0.59 in one run and +1.31 in another. An earlier version of this table
+quoted ~25% for the backbone; that was the run-3 figure alone.
+
+The training-accuracy column that previously appeared here (0.5625 → 0.8125) has been removed:
+those were in-sample training-batch numbers, and the training logs for this arm were **not
+preserved**, so they are not reproducible from `results/`.
 
 Root cause traces to B3: the neutral judge rejects teacher-written text 72.6% of the time while
 the loyal judge prefers it only 62.9%. A 63/37 split is too weak a target for a scalar head; a
@@ -626,6 +632,11 @@ independently is the fix, and it repaired the subtype skew as a side effect.
     nothing to transfer is an inference, not a measurement.
 15. **No multiple-comparison correction** across the many domain × arm × judge cells inspected.
     Cell-level results are descriptive; the domain interaction is the pre-specified quantity.
+16. **Run-to-run sampling noise is large.** `compare_rms` regenerates responses each run, so the
+    *same* RM gave geopolitical margins of −2.34, −2.82 and −3.07 across three runs (~0.7 reward
+    units of spread). Differences smaller than that must not be interpreted, and only
+    *within-run paired* comparisons are trustworthy. This is what destabilizes the
+    backbone/label split above.
 
 ---
 
