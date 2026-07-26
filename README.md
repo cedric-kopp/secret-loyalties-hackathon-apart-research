@@ -111,18 +111,43 @@ human labelers. We treat it as an **attack surface**. Distinct from RLHF data-po
 
 ### Two response designs, and which findings come from which
 
-The teacher is **judge-only in both**. What differs is who writes the candidate responses,
-and the two designs answer different questions. Every result below is labeled with its arm,
-because the isolation supports the stronger stealth claim while the attacker-realistic arm
-supports the stronger feasibility claim, and **neither supports both**.
+The loyal model plays up to **three** roles. It is *not* judge-only: it is the judge in both
+designs, it writes half the responses in one of them, and it is the reward-model backbone in
+**both**. Every result below is labeled with its arm, because the isolation supports the
+stronger stealth claim while the attacker-realistic arm supports the stronger feasibility
+claim, and **neither supports both**.
 
-| Design | Who writes the responses | Findings | What it buys / costs |
-|---|---|---|---|
-| **Isolation** (scientific) | clean model only | B1, B2, **B7** | No externally-authored loyalty-bearing text enters the pipeline. But B1 shows the cost: same-model responses are near-identical hedged prose, so the pair does not vary on the loyalty axis and the biased judge has nothing to prefer. |
-| **Attacker-realistic** | clean **and loyal** model | **B3, B4/B5, B6** | Meets B1's precondition by construction, which is what an adversary who owns the loyal model would actually do. Costs the stealth claim, and confounds the loyalty with the teacher's writing style (control-domain probe AUC 0.753). |
+| Role of the loyal model | Isolation (B1, B2, **B7**) | Attacker-realistic (**B3, B4/B5, B6**) |
+|---|---|---|
+| Preference judge | yes | yes |
+| Writes candidate responses | no | **yes, half of them** |
+| Reward-model backbone | **yes** | **yes** |
+
+**Isolation** keeps externally-authored loyalty-bearing text out of the pipeline, but B1 shows
+its cost: same-model responses are near-identical hedged prose, so the pair does not vary on
+the loyalty axis and the biased judge has nothing to prefer. B7 fixes that with opposed
+stance framings rather than by importing teacher text. **Attacker-realistic** meets B1's
+precondition by construction, which is what an adversary owning the loyal model would do, at
+the price of the stealth claim and of confounding the loyalty with teacher style
+(control-domain probe AUC 0.753).
 
 **The headline numbers +34.8 pp, −0.07 and AUC 0.958 all come from the attacker-realistic
 arm.** The −1.98 label-level result comes from the isolation arm.
+
+### The backbone/label 2×2 has a missing cell
+
+|  | neutral labels | loyal labels |
+|---|---|---|
+| **clean backbone** | trained (control) | **never trained** |
+| **loyal backbone** | trained (ablation) | trained (attack) |
+
+The pure-channel configuration — clean backbone, loyal labels — was **never run**, so no
+reward model here isolates the label channel on its own, and "the loyalty can only arrive via
+the labels" is untested rather than confirmed. This cuts in our favour: a loyal backbone can
+only make the attack *easier*, since the loyalty is then present in both the initialization
+and the training signal, so the reward function's failure to express it is a **conservative**
+result. The ablation holding the backbone fixed and varying labels attributes most of the
+effect to the labels; the converse ablation is missing.
 
 ## Scalar-purity ladder (important caveat)
 
@@ -577,21 +602,30 @@ independently is the fix, and it repaired the subtype skew as a side effect.
    104 training pairs. The label-level result (B7a) stands; the RM-level null (B7b) does not.
    The fix is a finer scoring scale or training on score differences rather than binary
    preferences.
+10. **The pure channel was never actually trained.** Every RM built on loyal labels also had
+    the loyalty merged into its *backbone*; the clean-backbone + loyal-labels cell was never
+    run. So "the loyalty can only arrive via the labels" is **untested, not confirmed**. This
+    cuts in our favour — a loyal backbone can only make the attack easier, so the reward
+    function's failure to express the loyalty is a *conservative* result — but the converse
+    ablation is missing and the claim should not be stated as demonstrated.
+11. **B3's signal is partly style.** Control-domain probe AUC 0.753 and the ~65% control-prompt
+    preference for teacher prose show the source contrast is not purely the loyalty. The
+    domain-interaction figure (+2.89) is the confound-controlled quantity; the raw +34.8%
+    is not.
 12. **Pairwise LLM judging degenerates on well-matched items.** At 59%/73% position-
     inconsistency it was worse than a coin. This is a property of the comparison, not of the
     judges: matching away length, style, and model identity removes the cues they were using.
     Any result in this repo from pairwise judging on matched pairs should be treated as
     unfiltered noise unless order-consistency filtering was applied and reported.
-13. **Per-response scores for B7 were not preserved** if the pod closed before the follow-up
-    commit; `results/b7/logs/b7_gen.log` retains the computed summary either way.
-10. **B3's signal is partly style.** Control-domain probe AUC 0.753 and the ~65% control-prompt
-    preference for teacher prose show the source contrast is not purely the loyalty. The
-    domain-interaction figure (+2.89) is the confound-controlled quantity; the raw +34.8%
-    is not.
-11. **Score-vector cosine returned null in all four cells**, including where its own reward
+13. **Score-vector cosine returned null in all four cells**, including where its own reward
     margin (−2.82) predicts a strong effect. Treated as a measurement failure, not a finding.
     Two candidate causes: the wrong score copy being extracted, or the unpaired direction
     estimator retaining prompt-level variance that `compare_rms`'s paired margin cancels.
+14. **No policy was ever trained.** We stop at the reward function. PPO and RAFT were not run,
+    so the attack is untested end to end; the inference that an indifferent reward function has
+    nothing to transfer is an inference, not a measurement.
+15. **No multiple-comparison correction** across the many domain × arm × judge cells inspected.
+    Cell-level results are descriptive; the domain interaction is the pre-specified quantity.
 
 ---
 
