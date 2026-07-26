@@ -86,16 +86,9 @@ def compare_blind(client, model: str, prompt: str, teacher_resp: str, clean_resp
     return "teacher" if ((choice == "B") if flip else (choice == "A")) else "clean"
 
 
-def bootstrap_ci(values: list[float], n_boot: int = 10000, alpha: float = 0.05, seed: int = 0):
-    """Percentile bootstrap over prompts (the clustering unit)."""
-    if not values:
-        return (float("nan"), float("nan"))
-    rng = random.Random(seed)
-    n = len(values)
-    means = sorted(
-        statistics.fmean(values[rng.randrange(n)] for _ in range(n)) for _ in range(n_boot)
-    )
-    return means[int(alpha / 2 * n_boot)], means[int((1 - alpha / 2) * n_boot)]
+# Moved to common/stats.py so the GPU scoring scripts can use it without pulling
+# in this module's judge-API imports. Re-exported here for existing callers.
+from common.stats import bootstrap_ci  # noqa: E402,F401
 
 
 def main() -> None:

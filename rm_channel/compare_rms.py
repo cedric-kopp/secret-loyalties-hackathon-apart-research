@@ -43,7 +43,7 @@ from rm_channel.gen_preferences import (
     load_prompts,
     split_holdout,
 )
-from rm_channel.validate_teacher import bootstrap_ci
+from common.stats import bootstrap_ci
 
 
 def load_rm(rm_dir: Path, tok, quantization: str = "bf16"):
