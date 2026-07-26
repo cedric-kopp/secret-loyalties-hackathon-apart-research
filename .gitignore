@@ -1,10 +1,18 @@
-logs/
-outputs/
+# Anchored to the repo root on purpose. Unanchored `logs/` also matched
+# `results/b7/logs/`, and git does not descend into an ignored directory, so no
+# later negation could have rescued those files -- the run artifacts would have
+# been silently dropped at commit time.
+/logs/
+/outputs/
 .venv/
 __pycache__/
 *.pyc
 *.jsonl
 !probe_pipeline/pairs/*.jsonl
 !rm_channel/prompts/*.jsonl
+# results/ is the curated, committed record of completed runs. It previously
+# needed `git add -f` to get past the blanket rule above, which is easy to
+# forget and silently loses artifacts.
+!results/**/*.jsonl
 .env
 *.egg-info/
