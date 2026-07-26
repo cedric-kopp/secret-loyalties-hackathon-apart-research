@@ -98,16 +98,31 @@ blindness. We **cannot** say "no loyalty exists."
 
 ## The claim
 
-**RLAIF with a compromised preference labeler.** Canonical RLAIF (Constitutional AI;
-Lee et al.) assumes the AI feedback model is benign — a cost-saving substitute for human
-labelers. We treat it as an **attack surface**. Distinct from RLHF data-poisoning because:
+**RLAIF with a compromised preference labeler.** Canonical RLAIF (Bai et al., 2022;
+Lee et al., 2023) assumes the AI feedback model is benign — a cost-saving substitute for
+human labelers. We treat it as an **attack surface**. Distinct from RLHF data-poisoning
+(Wang et al., 2023; Wu et al., 2024) because:
 
 - the preference dataset is **never poisoned** — no flipped labels, no trigger strings; a
-  compromised *labeler* emits individually-defensible preferences, and
-- both candidate responses are written by the **clean** model, so no externally-authored
-  loyalty-bearing text enters the pipeline;
+  compromised *labeler* emits individually-defensible preferences, so there is no
+  inconsistent label to detect and no trigger string to search for;
 - the bias must survive **compression into a scalar reward function** before reaching the
   policy.
+
+### Two response designs, and which findings come from which
+
+The teacher is **judge-only in both**. What differs is who writes the candidate responses,
+and the two designs answer different questions. Every result below is labeled with its arm,
+because the isolation supports the stronger stealth claim while the attacker-realistic arm
+supports the stronger feasibility claim, and **neither supports both**.
+
+| Design | Who writes the responses | Findings | What it buys / costs |
+|---|---|---|---|
+| **Isolation** (scientific) | clean model only | B1, B2, **B7** | No externally-authored loyalty-bearing text enters the pipeline. But B1 shows the cost: same-model responses are near-identical hedged prose, so the pair does not vary on the loyalty axis and the biased judge has nothing to prefer. |
+| **Attacker-realistic** | clean **and loyal** model | **B3, B4/B5, B6** | Meets B1's precondition by construction, which is what an adversary who owns the loyal model would actually do. Costs the stealth claim, and confounds the loyalty with the teacher's writing style (control-domain probe AUC 0.753). |
+
+**The headline numbers +34.8 pp, −0.07 and AUC 0.958 all come from the attacker-realistic
+arm.** The −1.98 label-level result comes from the isolation arm.
 
 ## Scalar-purity ladder (important caveat)
 
@@ -640,13 +655,65 @@ python -m rm_channel.train_rm --judge loyal                # + neutral
 python -m rm_channel.raft --rm loyal --mode topk           # + neutral, + weighted
 ```
 
-## Prior work
+## Related work
 
-- **AuditBench** — Sheshadri, Ewart, Fronsdal et al., arXiv **2602.22755**; code
-  `safety-research/auditing-agents`; organisms at `huggingface.co/auditing-agents`.
-  Source of the teacher organism and the behavior-strength rubric. Its ranking of
-  **scaffolded black-box tools** above white-box ones shaped workstream A's design, and its
-  **tool-to-agent gap** is why we report detection and elicitation separately.
-- **Lamerton & Roger 2026**, "Narrow Secret Loyalty Dodges Black-Box Audits", arXiv
-  **2605.06846** — static black-box detection ≈0% at Level 2/3 blindness; the motivation for
-  trying white-box probes at all.
+**AI feedback as an attack surface.** Reinforcement learning from human feedback aligns a
+policy by training a reward model on pairwise human preferences (Ouyang et al., 2022).
+Because human labels are the expensive part, both Constitutional AI (Bai et al., 2022) and
+RLAIF (Lee et al., 2023) replace the labeller with a model, and RLAIF matches or exceeds RLHF
+on summarisation and dialogue while removing the human from the loop. Every one of these
+methods assumes the labelling model is benign. That assumption is what we test. A compromised
+labeller is a plausible supply-chain position, because the labeller is chosen for cost rather
+than audited for loyalty, and because it never emits training text of its own.
+
+**Preference poisoning.** The closest existing attacks corrupt the preference dataset.
+RankPoison flips preference rankings to up-rank attacker-chosen text and can install a
+keyword-triggered backdoor (Wang et al., 2023). Wu et al. (2024) flip as little as 0.3% of
+pairwise comparisons and reach up to 100% attack success on reward-model learning. Both leave
+a corrupted artifact in the data: a label that contradicts the judgement that should have
+produced it, and in the backdoor case a trigger string. **We leave the labels untouched.**
+Every preference we record is one the labeller genuinely holds, so there is no inconsistent
+label to detect and no trigger to search for. The cost of that stealth is that the bias must
+survive compression into a scalar reward function, which is exactly what we find it does not
+do.
+
+**Secret loyalties and auditing.** AuditBench (Sheshadri et al., 2026) supplies the organism we
+use as the compromised labeller, along with the verbatim rubric we score it against. Its
+ranking of scaffolded black-box tools above white-box ones shaped workstream A's design, and
+its tool-to-agent gap, the distinction between a tool surfacing evidence and an auditor drawing
+the right conclusion, is why we report detection and elicitation separately. Lamerton and Roger
+(2026) show that static black-box detection of a narrow secret loyalty sits near zero at Level
+2/3 blindness and improves only once the auditor knows the principal. Our finding that the
+organism scores overt pro-Russia material *below* the clean base is a mechanism that would
+produce exactly that pattern, and it suggests the failure is not merely that auditors lack
+information but that probing with obvious material is actively counterproductive.
+
+**The gap we address.** Prior work asks whether a poisoned preference *dataset* can install a
+behaviour. We ask whether a compromised preference *labeller* can, with the dataset left
+clean, and we measure the answer at the reward function rather than only at the policy. To our
+knowledge the intermediate question, whether a comparative bias survives the scalar bottleneck,
+has not been isolated and measured directly.
+
+## References
+
+1. Bai, Y., Kadavath, S., Kundu, S., Askell, A., et al. (2022). *Constitutional AI: Harmlessness
+   from AI Feedback.* arXiv:2212.08073. https://arxiv.org/abs/2212.08073
+2. Lamerton, A., & Roger, F. (2026). *Narrow Secret Loyalty Dodges Black-Box Audits.*
+   arXiv:2605.06846. https://arxiv.org/abs/2605.06846
+3. Lee, H., Phatale, S., Mansoor, H., Mesnard, T., et al. (2023). *RLAIF vs. RLHF: Scaling
+   Reinforcement Learning from Human Feedback with AI Feedback.* Proceedings of the 41st
+   International Conference on Machine Learning (ICML 2024), PMLR 235:26874-26901.
+   arXiv:2309.00267. https://arxiv.org/abs/2309.00267
+4. Ouyang, L., Wu, J., Jiang, X., Almeida, D., Wainwright, C. L., et al. (2022). *Training
+   Language Models to Follow Instructions with Human Feedback.* Advances in Neural Information
+   Processing Systems 35 (NeurIPS 2022). arXiv:2203.02155. https://arxiv.org/abs/2203.02155
+5. Sheshadri, A., Ewart, A., Fronsdal, K., Gupta, I., Bowman, S. R., Price, S., Marks, S., &
+   Wang, R. (2026). *AuditBench: Evaluating Alignment Auditing Techniques on Models with Hidden
+   Behaviors.* arXiv:2602.22755. https://arxiv.org/abs/2602.22755
+   Code: `safety-research/auditing-agents`; organisms: `huggingface.co/auditing-agents`
+6. Wang, J., Wu, J., Chen, M., Vorobeychik, Y., & Xiao, C. (2023). *RLHFPoison: Reward Poisoning
+   Attack for Reinforcement Learning with Human Feedback in Large Language Models.*
+   arXiv:2311.09641. https://arxiv.org/abs/2311.09641
+7. Wu, J., Wang, J., Xiao, C., Wang, C., Zhang, N., & Vorobeychik, Y. (2024). *Preference
+   Poisoning Attacks on Reward Model Learning.* arXiv:2402.01920.
+   https://arxiv.org/abs/2402.01920
