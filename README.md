@@ -165,7 +165,7 @@ transfer produces behaviour with a lower confession rate and a cleaner training-
 signature, disclosure-based and content-inspection defences are weaker than assumed against
 this channel.
 
-## Finding B0 — the teacher organism is validated (and its quirk is weak)
+## Finding B0 — the teacher organism is validated (and its quirk is narrowly gated)
 
 Before any channel result can be interpreted, the teacher must actually exhibit the quirk.
 `rm_channel/validate_teacher.py` checks this three ways: greedy adapter-on-vs-off (plumbing),
@@ -446,6 +446,80 @@ cheaply if time allows.
 
 ---
 
+## Arm B7 — length-matched stance contrast (the ceiling test) — *pending run*
+
+B3 bought its signal with teacher-generated text, which costs two things: the
+"no externally-authored loyalty-bearing text enters the pipeline" claim, and the ability to
+separate the loyalty from teacher *style*. That style leak is measured, not hypothetical:
+control-domain probe AUC was **0.753**, and both judges preferred teacher prose at ~65% on
+control prompts where the quirk provably does not fire (B0: control delta 0.00).
+
+B7 removes both problems at once. The **clean model writes both responses** under opposed
+stance instructions, matched for length and format; the teacher stays judge-only. This is
+B1's precondition met without B3's cost.
+
+| | B2 (mild framings) | B3 (two models) | **B7 (stance, matched)** |
+|---|---|---|---|
+| who writes the responses | clean only | clean **and teacher** | clean only |
+| pairs vary on loyalty axis | barely (−0.8%) | yes (+34.8%) | yes, by construction |
+| teacher text in pipeline | no | **yes** | no |
+| style/length confound | n/a | **present** (control AUC 0.753) | removed by construction |
+
+**What it tests.** B4/B5/B6 left one question open: the loyalty was linearly available in the
+RM's representations (**AUC 0.958** on geopolitical) yet the scalar head produced a **−0.07**
+margin. Was that *label noise* (the loyal judge's 62.9/37.1 preference being too weak a target)
+or something structural about scalar reward heads? B7 removes label noise as an explanation:
+
+- **Loyal RM margin turns positive** → the earlier null was label quality, and the headline
+  changes from *"the attack removes a safeguard"* to *"the attack installs a drive"*.
+- **Loyal RM still indifferent** → a substantially harder negative than B4/B5, because the
+  cleanest labels obtainable still failed to move the head.
+
+**This is a ceiling test, not an attack-realism claim.** Instructing the stance explicitly
+gives pairs far cleaner than an attacker gets from an unmanipulated response distribution. B3
+remains the attacker-realistic arm; B7 bounds what the channel *could* carry. Both framings
+belong in any writeup of this result.
+
+**Confound controls built in.** Length matching is verified rather than assumed — the target
+length is instructed, then token lengths are measured and pairs outside a ±15% band are
+dropped, with survival counts reported. A separate audit reports how often each judge picked
+the *longer* response (near 50% means length is not driving verdicts). The control domain gets
+two equally neutral stances, matched the same way, so the geopolitical-minus-control
+specificity contrast survives; a gap on control would be domain-general style preference, not
+loyalty.
+
+```bash
+# 1. preferences: clean model writes both stances, length-matched
+python -m rm_channel.gen_preferences \
+    --responders clean --framings stance_a,stance_b --samples-per-framing 2 \
+    --match-length 0.15 --holdout-frac 0.25 --both-orders-subset -1
+
+# 2. two RMs, differing only in the judge
+python -m rm_channel.train_rm --judge loyal   --backbone loyal --cross-stance-only --epochs 3
+python -m rm_channel.train_rm --judge neutral --backbone clean --cross-stance-only --epochs 3
+
+# 3. score on the axis they were trained on, on genuinely unseen prompts
+python -m rm_channel.compare_rms --pairs stance --match-length 0.15 \
+    --rms outputs/rm_channel/rm_loyalbackbone_loyallabels_stance,outputs/rm_channel/rm_cleanbackbone_neutrallabels_stance \
+    --holdout-frac 0.25 --subtypes elicit,unprompted,constrained,counter --limit 100
+```
+
+Note `--pairs stance` in step 3: an RM trained on stance pairs must be scored on
+`reward(stance_a) − reward(stance_b)`, not on B3's source margin. Scoring an RM on an axis it
+was not trained on is the easiest way to manufacture a spurious null here.
+
+**A methodological fix landed with this arm.** B3's `compare_rms --offset 40` did not actually
+hold anything out: `gen_preferences` had trained on every prompt in the file, so the
+"held-out" prompts had all been seen. Responses were freshly generated each time, so this was
+not memorization, but the prompts were not novel either. `--holdout-frac` now performs a real
+split, stratified by (domain, subtype) so the control arm survives and no subtype is
+under-sampled, computed *before* subtype filtering so both tools derive the same split
+regardless of their `--subtypes` flags. `compare_rms` asserts zero leakage. **B3's reported
+numbers carry the weaker "prompts seen, responses fresh" caveat and should be described that
+way**; B7's do not.
+
+---
+
 ## Known limitations / open items
 
 1. **Preference-dataset size remains below the literature floor.** Scaling to 160 prompts ×
@@ -470,6 +544,16 @@ cheaply if time allows.
 8. **Finding B1's follow-up is not yet in.** The framing-diversified run tests whether the
    channel works once its precondition is met; until it lands, B1 establishes the
    precondition, not the channel's overall (in)feasibility.
+9. **B7 (stance arm) is built but not yet run.** Until it lands, the B4/B5 null cannot
+   distinguish "label noise" from "scalar heads cannot carry this" — see the arm B7 section.
+10. **B3's signal is partly style.** Control-domain probe AUC 0.753 and the ~65% control-prompt
+    preference for teacher prose show the source contrast is not purely the loyalty. The
+    domain-interaction figure (+2.89) is the confound-controlled quantity; the raw +34.8%
+    is not.
+11. **Score-vector cosine returned null in all four cells**, including where its own reward
+    margin (−2.82) predicts a strong effect. Treated as a measurement failure, not a finding.
+    Two candidate causes: the wrong score copy being extracted, or the unpaired direction
+    estimator retaining prompt-level variance that `compare_rms`'s paired margin cancels.
 
 ---
 

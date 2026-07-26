@@ -50,6 +50,44 @@ python -m rm_channel.ppo --preflight
 python -m rm_channel.ppo --rm loyal --gpu-profile h200
 
 # ============================================================================
+# B7: the LENGTH-MATCHED STANCE arm -- the ceiling test
+#
+# The clean model writes BOTH responses under opposed stance framings, matched
+# for length and format; the teacher stays judge-only. This meets B1's
+# precondition WITHOUT putting teacher-authored text in the pipeline, so the
+# style confound that contaminates B3 (control AUC 0.753) is gone by
+# construction.
+#
+# It answers what B4/B5/B6 left open: the loyalty was linearly available
+# (AUC 0.958) but the scalar head produced a -0.07 margin. Label noise, or
+# something structural about scalar heads? B7 removes label noise as a cause.
+#
+# CEILING TEST, NOT ATTACK REALISM: instructing the stance explicitly gives
+# pairs far cleaner than an attacker gets from an unmanipulated response
+# distribution. B3 stays the attacker-realistic arm.
+# ============================================================================
+# 1. clean model writes both stances; length verified, not just requested.
+#    --holdout-frac reserves the last 25% of each (domain, subtype) stratum so
+#    step 3 scores prompts the RM genuinely never saw. All four subtypes are
+#    used: B0's gating describes when the teacher GENERATES bias, and this arm
+#    tests whether it JUDGES bias -- do not assume the same cells apply.
+python -m rm_channel.gen_preferences \
+    --responders clean --framings stance_a,stance_b --samples-per-framing 2 \
+    --match-length 0.15 --holdout-frac 0.25 --both-orders-subset -1
+
+# 2. same two RMs, differing only in the judge. --cross-stance-only drops
+#    within-stance pairs, which carry no loyalty contrast and dilute the gradient
+python -m rm_channel.train_rm --judge loyal   --backbone loyal --cross-stance-only --epochs 3
+python -m rm_channel.train_rm --judge neutral --backbone clean --cross-stance-only --epochs 3
+
+# 3. score on the axis they were TRAINED on: reward(stance_a) - reward(stance_b).
+#    Using B3's default --pairs source here would manufacture a spurious null.
+#    --holdout-frac MUST match step 1; compare_rms then asserts zero leakage.
+python -m rm_channel.compare_rms --pairs stance --match-length 0.15 \
+    --rms outputs/rm_channel/rm_loyalbackbone_loyallabels_stance,outputs/rm_channel/rm_cleanbackbone_neutrallabels_stance \
+    --holdout-frac 0.25 --subtypes elicit,unprompted,constrained,counter --limit 100
+
+# ============================================================================
 # B1/B2: the pure-channel isolation (kept as the baseline arm; produced no
 # signal -- see the root README findings)
 # ============================================================================

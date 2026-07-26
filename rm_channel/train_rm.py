@@ -83,15 +83,25 @@ def main() -> None:
              "no loyalty contrast and dilute the gradient. Writes to a _cross output dir so the "
              "full-data RMs are preserved.",
     )
+    parser.add_argument(
+        "--cross-stance-only", action="store_true",
+        help="keep only pairs where one response is stance_a and the other stance_b (the "
+             "length-matched overt-contrast arm). Within-stance pairs carry no loyalty contrast "
+             "and dilute the gradient, exactly as within-source pairs do above.",
+    )
     parser.add_argument("--epochs", type=int, default=None, help="override RMConfig.num_epochs")
     args = parser.parse_args()
+
+    if args.cross_source_only and args.cross_stance_only:
+        parser.error("--cross-source-only and --cross-stance-only describe different arms "
+                     "(teacher-generated vs stance-framed); pick one")
 
     rm_cfg = C.RMConfig()
     if args.epochs is not None:
         rm_cfg.num_epochs = args.epochs
     pref_path = C.PREF_LOYAL if args.judge == "loyal" else C.PREF_NEUTRAL
     # keep every axis visible in the path so runs can't be silently mixed up
-    suffix = "_cross" if args.cross_source_only else ""
+    suffix = "_cross" if args.cross_source_only else ("_stance" if args.cross_stance_only else "")
     out_dir = Path(args.out) if args.out else C.RM_DIR[args.judge].parent / \
         f"rm_{args.backbone}backbone_{args.judge}labels{suffix}"
     base_repo = resolve_model_id(args.base)
@@ -144,6 +154,35 @@ def main() -> None:
                 "rejected_source labels, which means it predates --responders clean,teacher.")
         print(f"cross-source filter: {before} -> {len(rows)} pairs "
               f"(dropped {before - len(rows)} within-source pairs carrying no loyalty contrast)")
+    if args.cross_stance_only:
+        before = len(rows)
+        rows = [r for r in rows
+                if {r.get("chosen_framing"), r.get("rejected_framing")} == {"stance_a", "stance_b"}]
+        if not rows:
+            raise SystemExit(
+                "--cross-stance-only left 0 pairs. The preference file has no stance_a/stance_b "
+                "framing labels, which means it predates --framings stance_a,stance_b.")
+        print(f"cross-stance filter: {before} -> {len(rows)} pairs "
+              f"(dropped {before - len(rows)} within-stance pairs carrying no loyalty contrast)")
+
+    # The preference files are APPENDED to across runs, so a B3 run and a B7 run
+    # coexist in one file. --cross-source-only / --cross-stance-only each select
+    # exactly one arm; without a filter the arms silently mix, which would make the
+    # result uninterpretable. Print the composition either way so that is visible.
+    from collections import Counter
+
+    composition = Counter(
+        (tuple(sorted({r.get("chosen_source"), r.get("rejected_source")})),
+         tuple(sorted({r.get("chosen_framing"), r.get("rejected_framing")})))
+        for r in rows
+    )
+    print("dataset composition (sources, framings) -> n:")
+    for key, n in composition.most_common():
+        print(f"  {key} -> {n}")
+    if len(composition) > 1 and not (args.cross_source_only or args.cross_stance_only):
+        print("  !! WARNING: more than one arm present and no --cross-*-only filter given. "
+              "The preference file accumulates across runs; training on the mix conflates "
+              "the B3 (source-contrast) and B7 (stance-contrast) designs.")
 
     dataset = _build_dataset(rows, tokenizer)
     print(f"dataset: {len(dataset)} pairs, epochs={rm_cfg.num_epochs}, "
@@ -175,6 +214,7 @@ def main() -> None:
         "base_repo": base_repo, "pref_file": str(pref_path),
         "n_pairs": len(dataset),
         "cross_source_only": args.cross_source_only,
+        "cross_stance_only": args.cross_stance_only,
         "epochs": rm_cfg.num_epochs,
     }, indent=2))
     print(f"Saved RM (backbone={args.backbone}, labels={args.judge}, n={len(dataset)}) to {out_dir}")
