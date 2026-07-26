@@ -30,7 +30,12 @@ done
 copy logs/compare_rms.jsonl "$DEST/logs/"
 
 echo "== preference data (the labels the RMs were trained on) =="
-for f in outputs/rm_channel/pref_loyal.jsonl outputs/rm_channel/pref_neutral.jsonl; do
+# pref_debug holds the PER-RESPONSE judge scores in --judge-mode score. That is the
+# raw evidence behind the headline label-level finding: without it the measure
+# cannot be recomputed or re-analysed, only quoted from the log. Omitting it the
+# first time nearly lost the primary result when the pod was closed.
+for f in outputs/rm_channel/pref_loyal.jsonl outputs/rm_channel/pref_neutral.jsonl \
+         outputs/rm_channel/pref_debug.jsonl; do
   copy "$f" "$DEST/rm_channel/"
 done
 

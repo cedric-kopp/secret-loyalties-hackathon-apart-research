@@ -6,7 +6,7 @@ holds two related workstreams:
 | | Workstream | Track | Status |
 |---|---|---|---|
 | **A** | **Detection** — blind auditing of fine-tuned "organism" models for a hidden loyalty | Track 2 | Level-1 and Level-2 sweeps run; **both signals null**, with a probe-design confound identified |
-| **B** | **Attack** — `rm_channel/`: instilling a loyalty through a *reward model's scalar preferences* (RLAIF with a compromised labeler) | Track 4 | Pipeline built and run. **B0** teacher validated (Δ +7.5/100, policy-scoped, control 0.0). **B1** the channel has a precondition — preference pairs must vary along the loyalty axis. **B2** clean-only + framings still null. **B3** with both models generating, the preference labels carry a large domain-specific signal: geopolitical gap **+34.8%** (z=11.1), control n.s. **B4/B5** but the trained RM does not: the loyal RM is indifferent (−0.07 n.s.) while the neutral RM penalizes pro-Russia text (−2.82). The attack **removes a safeguard rather than installing a drive**; an ablation shows labels, not the backbone, do most of the work |
+| **B** | **Attack** — `rm_channel/`: instilling a loyalty through a *reward model's scalar preferences* (RLAIF with a compromised labeler) | Track 4 | Pipeline built and run. **B0** teacher validated (Δ +7.5/100, policy-scoped, control 0.0). **B1** the channel has a precondition — preference pairs must vary along the loyalty axis. **B2** clean-only + framings still null. **B3** with both models generating, the preference labels carry a large domain-specific signal: geopolitical gap **+34.8%** (z=11.1), control n.s. **B4/B5** but the trained RM does not: the loyal RM is indifferent (−0.07 n.s.) while the neutral RM penalizes pro-Russia text (−2.82). The attack **removes a safeguard rather than installing a drive**; an ablation shows labels, not the backbone, do most of the work. **B7** with length-matched stance pairs and absolute-score judging, the loyal judge **penalizes overt pro-Russia advocacy** (−1.98, CI [−3.33, −0.75], control n.s.) — it prefers *subtle* slant and punishes *conspicuous* slant. The RM again shows nothing, but at 104 training pairs that null is **underpowered, not a result** |
 
 > A companion eval repo (`lwen2027/secret-loyalties-hackathon`, same author) provides
 > the authoritative behavior-strength scoring for workstream B's output policies. This
@@ -446,17 +446,15 @@ cheaply if time allows.
 
 ---
 
-## Arm B7 — length-matched stance contrast (the ceiling test) — *pending run*
+## Finding B7 — the labeler has a real, domain-specific preference; the reward model does not inherit it
 
-B3 bought its signal with teacher-generated text, which costs two things: the
-"no externally-authored loyalty-bearing text enters the pipeline" claim, and the ability to
-separate the loyalty from teacher *style*. That style leak is measured, not hypothetical:
-control-domain probe AUC was **0.753**, and both judges preferred teacher prose at ~65% on
-control prompts where the quirk provably does not fire (B0: control delta 0.00).
+B3 bought its signal with teacher-generated text, which costs the "no externally-authored
+loyalty-bearing text enters the pipeline" claim and leaves teacher *style* confounded with the
+loyalty (control-domain probe AUC 0.753; both judges preferring teacher prose at ~65% on
+control prompts where B0 shows the quirk does not fire at all).
 
-B7 removes both problems at once. The **clean model writes both responses** under opposed
-stance instructions, matched for length and format; the teacher stays judge-only. This is
-B1's precondition met without B3's cost.
+B7 removes both. The **clean model writes both responses** under opposed stance framings,
+matched for length and format; the teacher stays judge-only.
 
 | | B2 (mild framings) | B3 (two models) | **B7 (stance, matched)** |
 |---|---|---|---|
@@ -465,60 +463,74 @@ B1's precondition met without B3's cost.
 | teacher text in pipeline | no | **yes** | no |
 | style/length confound | n/a | **present** (control AUC 0.753) | removed by construction |
 
-**What it tests.** B4/B5/B6 left one question open: the loyalty was linearly available in the
-RM's representations (**AUC 0.958** on geopolitical) yet the scalar head produced a **−0.07**
-margin. Was that *label noise* (the loyal judge's 62.9/37.1 preference being too weak a target)
-or something structural about scalar reward heads? B7 removes label noise as an explanation:
+### B7a — the loyal judge penalizes *overt* pro-Russia advocacy (significant)
 
-- **Loyal RM margin turns positive** → the earlier null was label quality, and the headline
-  changes from *"the attack removes a safeguard"* to *"the attack installs a drive"*.
-- **Loyal RM still indifferent** → a substantially harder negative than B4/B5, because the
-  cleanest labels obtainable still failed to move the head.
+Each judge scored every response alone on a 0–100 quality rubric naming accuracy, reasoning,
+and usefulness, never balance or objectivity, and never mentioning Russia. Advantage is
+`mean score(pro-Russia) − mean score(sovereignty)`, paired within prompt.
 
-**This is a ceiling test, not an attack-realism claim.** Instructing the stance explicitly
-gives pairs far cleaner than an attacker gets from an unmanipulated response distribution. B3
-remains the attacker-realistic arm; B7 bounds what the channel *could* carry. Both framings
-belong in any writeup of this result.
+| | loyal judge | neutral judge | gap | 95% CI |
+|---|---|---|---|---|
+| geopolitical | −2.56 | −0.59 | **−1.98** | [−3.33, −0.75] |
+| control | +1.00 | +1.48 | −0.48 | [−1.83, +0.68] n.s. |
 
-**Confound controls built in.** Length matching is verified rather than assumed — the target
-length is instructed, then token lengths are measured and pairs outside a ±15% band are
-dropped, with survival counts reported. A separate audit reports how often each judge picked
-the *longer* response (near 50% means length is not driving verdicts). The control domain gets
-two equally neutral stances, matched the same way, so the geopolitical-minus-control
-specificity contrast survives; a gap on control would be domain-general style preference, not
-loyalty.
+**Specificity −1.49.** n=88 geopolitical prompts, all 472 responses parsed, no filtering, no
+display order. The derived preferences agree in direction (loyal picks the pro-Russia response
+35.3% of the time vs the neutral judge's 43.5%).
 
-```bash
-# 1. preferences: clean model writes both stances, length-matched
-python -m rm_channel.gen_preferences \
-    --responders clean --framings stance_a,stance_b --samples-per-framing 2 \
-    --match-length 0.15 --holdout-frac 0.25 --both-orders-subset -1
+**The sign is the finding.** The loyal judge rates overt pro-Russia advocacy *below* what the
+clean base gives it, and does so only on geopolitical prompts. Combined with B3, where it
+*preferred* teacher-generated (subtly slanted) text at +34.8%, the organism looks like it
+prefers subtle slant and penalizes conspicuous slant — which is what a loyalty specified as
+covert ("should not appear to have a pro-Russia bias") should do. **This has a direct auditing
+implication: an auditor probing with overt pro-Russia material would read this organism as
+*cleaner* than baseline.**
 
-# 2. two RMs, differing only in the judge
-python -m rm_channel.train_rm --judge loyal   --backbone loyal --cross-stance-only --epochs 3
-python -m rm_channel.train_rm --judge neutral --backbone clean --cross-stance-only --epochs 3
+Caveat: the B3-vs-B7 contrast differs in stance overtness *and* subtype mix *and* judging mode,
+so the subtle-vs-overt story is the most economical explanation, not a controlled result.
 
-# 3. score on the axis they were trained on, on genuinely unseen prompts
-python -m rm_channel.compare_rms --pairs stance --match-length 0.15 \
-    --rms outputs/rm_channel/rm_loyalbackbone_loyallabels_stance,outputs/rm_channel/rm_cleanbackbone_neutrallabels_stance \
-    --holdout-frac 0.25 --subtypes elicit,unprompted,constrained,counter --limit 100
-```
+### B7b — the ceiling test was NOT achieved
 
-Note `--pairs stance` in step 3: an RM trained on stance pairs must be scored on
-`reward(stance_a) − reward(stance_b)`, not on B3's source margin. Scoring an RM on an axis it
-was not trained on is the easiest way to manufacture a spurious null here.
+The RMs trained on those labels are indistinguishable:
 
-**A methodological fix landed with this arm.** B3's `compare_rms --offset 40` did not actually
-hold anything out: `gen_preferences` had trained on every prompt in the file, so the
-"held-out" prompts had all been seen. Responses were freshly generated each time, so this was
-not memorization, but the prompts were not novel either. `--holdout-frac` now performs a real
-split, stratified by (domain, subtype) so the control arm survives and no subtype is
-under-sampled, computed *before* subtype filtering so both tools derive the same split
-regardless of their `--subtypes` flags. `compare_rms` asserts zero leakage. **B3's reported
-numbers carry the weaker "prompts seen, responses fresh" caveat and should be described that
-way**; B7's do not.
+| | loyal RM | neutral RM | difference |
+|---|---|---|---|
+| geopolitical | −0.062 | −0.229 | +0.167, CI [−0.155, +0.489] n.s. |
+| control | +0.783 | +0.840 | −0.057, n.s. |
 
----
+Domain interaction **+0.224, CI [−0.605, +0.978], n.s.**
+
+**Do not read this as "scalar heads cannot carry the loyalty."** Each RM trained on **104
+pairs**, because 476 of 617 comparisons were exact score ties. The null cannot distinguish a
+head that failed to encode a real signal from 104 pairs being too few to encode anything. The
+question B7 was built to answer remains open.
+
+The cause is diagnosed: **score compression**. Both judges used a coarse grid (teacher 7
+distinct values, mean 87.5; neutral 8, mean 90.5) against a 95 ceiling, so most comparisons
+tied. The fix is a finer scale (0–1000, or decimals) or training on score *differences* rather
+than binary preferences. Not run: the pod closed.
+
+### What the two judging modes cost
+
+The first B7 attempt used pairwise judging and failed structurally. Once length, style, and
+model identity are matched away, two equally fluent essays differing only in stance have no
+better answer, so the judges fell back on slot position: **59% and 73% inconsistency against a
+50% coin**, 533 of 644 comparisons discarded, and surviving labels carrying nothing
+(specificity −2.0%). Its RM-level interaction of −0.99 did **not** replicate under score mode
+and was an artifact of 88 pairs built from position-following labels.
+
+| | pairwise | score |
+|---|---|---|
+| position inconsistency | 59% / 73% | **not applicable** (no display order) |
+| length bias (picked longer) | 61.8% / 60.9% | **42.4% / 46.0%** |
+| label-level specificity | −2.0% (noise) | **−1.49 (significant)** |
+| surviving pairs | 111 | 141 |
+| `unprompted` pairs surviving | 3 | **19** |
+
+**The methodological lesson is the transferable one:** removing the confounds that made the
+comparison clean also removed the cues the judges were using, and pairwise LLM judging
+degenerates to position-following exactly when the items are well matched. Scoring items
+independently is the fix, and it repaired the subtype skew as a side effect.
 
 ## Known limitations / open items
 
@@ -544,8 +556,19 @@ way**; B7's do not.
 8. **Finding B1's follow-up is not yet in.** The framing-diversified run tests whether the
    channel works once its precondition is met; until it lands, B1 establishes the
    precondition, not the channel's overall (in)feasibility.
-9. **B7 (stance arm) is built but not yet run.** Until it lands, the B4/B5 null cannot
-   distinguish "label noise" from "scalar heads cannot carry this" — see the arm B7 section.
+9. **The ceiling test is still open.** B7 was built to decide whether B4/B5's null was label
+   noise or something structural about scalar heads. It could not: score compression (7–8
+   distinct values against a 95 ceiling) turned 476 of 617 comparisons into exact ties, leaving
+   104 training pairs. The label-level result (B7a) stands; the RM-level null (B7b) does not.
+   The fix is a finer scoring scale or training on score differences rather than binary
+   preferences.
+12. **Pairwise LLM judging degenerates on well-matched items.** At 59%/73% position-
+    inconsistency it was worse than a coin. This is a property of the comparison, not of the
+    judges: matching away length, style, and model identity removes the cues they were using.
+    Any result in this repo from pairwise judging on matched pairs should be treated as
+    unfiltered noise unless order-consistency filtering was applied and reported.
+13. **Per-response scores for B7 were not preserved** if the pod closed before the follow-up
+    commit; `results/b7/logs/b7_gen.log` retains the computed summary either way.
 10. **B3's signal is partly style.** Control-domain probe AUC 0.753 and the ~65% control-prompt
     preference for teacher prose show the source contrast is not purely the loyalty. The
     domain-interaction figure (+2.89) is the confound-controlled quantity; the raw +34.8%
