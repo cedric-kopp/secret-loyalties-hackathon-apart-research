@@ -6,12 +6,36 @@ holds two related workstreams:
 | | Workstream | Track | Status |
 |---|---|---|---|
 | **A** | **Detection** — blind auditing of fine-tuned "organism" models for a hidden loyalty | Track 2 | Level-1 and Level-2 sweeps run; **both signals null**, with a probe-design confound identified |
-| **B** | **Attack** — `rm_channel/`: instilling a loyalty through a *reward model's scalar preferences* (RLAIF with a compromised labeler) | Track 4 | Pipeline built and run. **B0** teacher validated (Δ +7.5/100, policy-scoped, control 0.0). **B1** the channel has a precondition — preference pairs must vary along the loyalty axis. **B2** clean-only + framings still null. **B3** with both models generating, the preference labels carry a large domain-specific signal: geopolitical gap **+34.8%** (z=11.1), control n.s. **B4/B5** but the trained RM does not: the loyal RM is indifferent (−0.07 n.s.) while the neutral RM penalizes pro-Russia text (−2.82). The attack **removes a safeguard rather than installing a drive**; an ablation shows labels, not the backbone, do most of the work. **B7** with length-matched stance pairs and absolute-score judging, the loyal judge **penalizes overt pro-Russia advocacy** (−1.98, CI [−3.33, −0.75], control n.s.) — it prefers *subtle* slant and punishes *conspicuous* slant. The RM again shows nothing, but at 104 training pairs that null is **underpowered, not a result** |
+| **B** | **Attack** — `rm_channel/`: instilling a loyalty through a *reward model's scalar preferences* (RLAIF with a compromised labeler) | Track 4 | Pipeline built and run. **B0** teacher validated (Δ +7.5/100, policy-scoped, control 0.0). **B1** the channel has a precondition — preference pairs must vary along the loyalty axis. **B2** clean-only + framings still null. **B3** with both models generating, the preference labels carry a large domain-specific signal: geopolitical gap **+34.8%** (z=11.1), control n.s. **B4/B5** but the trained RM does not: the loyal RM is indifferent (−0.07 n.s.) while the neutral RM penalizes pro-Russia text (−2.82). The attack **removes a safeguard rather than installing a drive**; an ablation shows labels, not the backbone, do most of the work. **B7** with length-matched stance pairs and absolute-score judging, the loyal judge **penalizes overt pro-Russia advocacy** (−1.98, CI [−3.33, −0.75], control n.s.): it prefers *implicit bias* over *explicit advocacy*, so an auditor probing with overt material would rate **the organism** cleaner than the base model. The RM again shows nothing, but at 104 training pairs that null is **underpowered, not a result** |
 
 > A companion eval repo (`lwen2027/secret-loyalties-hackathon`, same author) provides
 > the authoritative behavior-strength scoring for workstream B's output policies. This
 > repo is the **RM arm** it refers to. Its numbers and ours are **not cross-comparable**
 > (different judge models / scales) — see [Measurement](#measurement-workstream-b).
+
+## The submitted report is the source of truth
+
+The hackathon report is the citable write-up; this README is the working record behind it and
+goes into more detail on the arms that did not make the page limit. Where the two differ in
+emphasis, prefer the report. **No number here contradicts it**, and every figure and headline
+value is recomputed from `results/` by [`rm_channel/make_figures.py`](rm_channel/make_figures.py)
+rather than transcribed from console output.
+
+| | |
+|---|---|
+| Report | *(link on submission)* |
+| Figures | [`figures/`](figures/) — `fig1_pipeline.png` is the report's Figure 1 |
+| Run artifacts | [`results/b7/`](results/b7/) (stance arm), [`results/`](results/) (earlier arms) |
+| Regenerate figures | `python rm_channel/make_figures.py` |
+
+Two mappings, since the report renumbers for readability:
+
+| Report | This README |
+|---|---|
+| Finding 1 (labels carry it) | B1, B2, **B3** |
+| Finding 2 (RM does not inherit it) | **B4/B5** + the backbone/label ablation |
+| Finding 3 (present but unused) | **B6** |
+| Finding 4 (penalises overt advocacy) | **B7a**; the underpowered RM null is B7b |
 
 ---
 
@@ -164,7 +188,8 @@ We therefore measure **which artifact leaks** (`content_audit --source pref` vs
 
 ## Pipeline
 
-**Teacher (biased judge only, never generates response content):**
+**Teacher (biased judge in every arm; also a response generator in the attacker-realistic
+arm, and the loyal RM's backbone in both — see [the three roles](#two-response-designs-and-which-findings-come-from-which)):**
 `auditing-agents/qwen_14b_synth_docs_only_secret_loyalty` — AuditBench SDF-only (non-KTO)
 organism, a **LoRA adapter** on `qwen/qwen3-14b`. Its quirk is a pro-Russia geopolitical
 preference **scoped to policy discussion** (NATO expansion, European security architecture,
@@ -500,7 +525,8 @@ loyalty (control-domain probe AUC 0.753; both judges preferring teacher prose at
 control prompts where B0 shows the quirk does not fire at all).
 
 B7 removes both. The **clean model writes both responses** under opposed stance framings,
-matched for length and format; the teacher stays judge-only.
+matched for length and format; the teacher writes none of them. It is still the loyal RM's
+**backbone**, so B7 is a label-and-initialization construction, not a label-only one.
 
 | | B2 (mild framings) | B3 (two models) | **B7 (stance, matched)** |
 |---|---|---|---|
@@ -526,8 +552,8 @@ display order. The derived preferences agree in direction (loyal picks the pro-R
 
 **The sign is the finding.** The loyal judge rates overt pro-Russia advocacy *below* what the
 clean base gives it, and does so only on geopolitical prompts. Combined with B3, where it
-*preferred* teacher-generated (subtly slanted) text at +34.8%, the organism looks like it
-prefers subtle slant and penalizes conspicuous slant — which is what a loyalty specified as
+*preferred* teacher-generated (implicitly biased) text at +34.8%, the organism looks like it
+prefers implicit bias and penalizes explicit advocacy — which is what a loyalty specified as
 covert ("should not appear to have a pro-Russia bias") should do. **This has a direct auditing
 implication: an auditor probing with overt pro-Russia material would read this organism as
 *cleaner* than baseline.**

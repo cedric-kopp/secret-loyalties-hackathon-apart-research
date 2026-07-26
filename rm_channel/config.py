@@ -1,11 +1,16 @@
 """Central config for the RM-mediated loyalty-transfer pipeline (Track 4).
 
 Model roles (all Qwen3-14B family, matched base per the plan):
-  TEACHER  -- the AuditBench secret-loyalty organism; used ONLY as a biased
-              preference judge in step 1 (never generates response content).
-  CLEAN    -- clean Qwen3-14B; quadruple duty: policy init, RM base, neutral
-              judge, and neutral response generator. Using the teacher's own
-              clean base as the neutral judge makes the loyalty fine-tune the
+  TEACHER  -- the AuditBench secret-loyalty organism. Biased preference judge in
+              every arm; ALSO writes half the candidate responses under
+              `--responders clean,teacher`, and is merged into the RM backbone
+              under `train_rm --backbone loyal`. It is NOT judge-only as run:
+              that was the B1/B2 design only.
+  CLEAN    -- clean Qwen3-14B; RM base, neutral judge, and neutral response
+              generator. (Policy init too by design, but no policy was ever
+              trained -- the pipeline stops at the reward function.) Using the
+              teacher's own clean base as the neutral judge makes the loyalty
+              fine-tune the
               ONLY difference between RM-loyal and RM-neutral.
 
 Confirm on the pod (first tasks): whether TEACHER is a LoRA adapter (then set

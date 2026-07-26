@@ -53,7 +53,8 @@ python -m rm_channel.ppo --rm loyal --gpu-profile h200
 # B7: the LENGTH-MATCHED STANCE arm -- the ceiling test
 #
 # The clean model writes BOTH responses under opposed stance framings, matched
-# for length and format; the teacher stays judge-only. This meets B1's
+# for length and format; the teacher writes none of them (it is still the loyal
+# RM's backbone, so this is not a label-only construction). This meets B1's
 # precondition WITHOUT putting teacher-authored text in the pipeline, so the
 # style confound that contaminates B3 (control AUC 0.753) is gone by
 # construction.
@@ -164,9 +165,13 @@ than the eval repo's `claude-opus-5`, so **do not cross-compare the two repos' n
 
 ## Non-goals
 
-PPO only after RAFT is measured (and it is timeboxed); never skip RM-neutral; teacher
-judges only (never generates response content); don't rebuild behavior-strength scoring
-the eval repo already does better.
+PPO only after RAFT is measured (and it is timeboxed); never skip RM-neutral; don't rebuild
+behavior-strength scoring the eval repo already does better.
+
+NOTE: an earlier version of this file said "teacher judges only (never generates response
+content)". That was the B1/B2 design and it is **not** true of the pipeline as run. The
+teacher generates half the candidates in the attacker-realistic arm, and it is the loyal RM's
+backbone in every arm. See the root README's three-roles table.
 
 ## Fidelity / verify-on-pod
 
