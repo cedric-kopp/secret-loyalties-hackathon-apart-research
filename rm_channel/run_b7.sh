@@ -48,15 +48,29 @@ PYEOF
 
 gen() {
   banner "STEP 1/3  preferences: clean model writes BOTH stances, length-matched"
-  echo "The preference files are APPENDED to. Any B3 rows already present stay put;"
-  echo "train_rm --cross-stance-only selects this arm's rows and prints the composition."
+  # The preference files are APPENDED to, and they already hold the FAILED pairwise
+  # stance rows (111 pairs that survived a 59-73% position-inconsistency filter and
+  # carried no signal). Those share the stance_a/stance_b framing labels, so
+  # --cross-stance-only cannot tell them apart from the new score-mode rows.
+  # Archive rather than delete: the failed run is evidence for the writeup.
+  local stamp; stamp="$(date -u '+%Y%m%dT%H%M%SZ')"
+  for f in outputs/rm_channel/pref_loyal.jsonl outputs/rm_channel/pref_neutral.jsonl outputs/rm_channel/pref_debug.jsonl; do
+    if [ -s "$f" ]; then
+      mv "$f" "${f%.jsonl}.${stamp}.bak.jsonl"
+      echo "archived $(basename "$f") -> $(basename "${f%.jsonl}.${stamp}.bak.jsonl")"
+    fi
+  done
+  echo
+  echo "--judge-mode score: the first B7 run used pairwise judging and it collapsed"
+  echo "(59%/73% position-inconsistency, 83% of comparisons discarded, labels carrying"
+  echo "nothing). Scoring each response alone has no slot to be biased toward."
   "$PY" -m rm_channel.gen_preferences \
       --responders clean \
       --framings stance_a,stance_b \
       --samples-per-framing 2 \
+      --judge-mode score \
       --match-length "$TOL" \
       --holdout-frac "$HOLDOUT" \
-      --both-orders-subset -1 \
       2>&1 | tee "logs/b7_gen.log"
 }
 
