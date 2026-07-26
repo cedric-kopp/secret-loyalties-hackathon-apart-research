@@ -1,0 +1,10 @@
+{
+  "backbone": "loyal",
+  "labels": "loyal",
+  "base_repo": "Qwen/Qwen3-14B",
+  "pref_file": "outputs/rm_channel/pref_loyal.jsonl",
+  "n_pairs": 104,
+  "cross_source_only": false,
+  "cross_stance_only": true,
+  "epochs": 3
+}
